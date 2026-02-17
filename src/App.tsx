@@ -5,7 +5,7 @@ import './App.css';
 
 function App() {
   const [game, setGame] = useState<GameState>(createInitialGameState());
-  const [_selectedHex, setSelectedHex] = useState<Hex | null>(null);
+  const [_selectedHex, _setSelectedHex] = useState<Hex | null>(null);
   const [buildingMode, setBuildingMode] = useState<'road' | 'settlement' | 'city' | null>(null);
 
   // Get current player
@@ -57,6 +57,102 @@ function App() {
   // Build action
   const handleBuild = (type: 'road' | 'settlement' | 'city') => {
     setBuildingMode(type);
+    addLog(game, `${currentPlayer?.name} selected to build ${type}`);
+  };
+
+  // Handle hex/vertex click for building
+  const handleBoardClick = (_hexId: string) => {
+    if (!buildingMode || !isHumanTurn) return;
+    
+    const player = currentPlayer;
+    if (!player) return;
+    
+    if (buildingMode === 'settlement') {
+      // Check resources
+      const costs = { wood: 1, brick: 1, wheat: 1, sheep: 1 };
+      const canAfford = Object.entries(costs).every(
+        ([res, cost]) => (player.resources[res as Resource] || 0) >= cost
+      );
+      
+      if (!canAfford) {
+        addLog(game, `${player.name}: Not enough resources for settlement`);
+        return;
+      }
+      
+      // Deduct resources
+      const newGame = { ...game };
+      newGame.players = [...game.players];
+      newGame.players[player.id] = {
+        ...player,
+        resources: {
+          ...player.resources,
+          wood: (player.resources.wood || 0) - 1,
+          brick: (player.resources.brick || 0) - 1,
+          wheat: (player.resources.wheat || 0) - 1,
+          sheep: (player.resources.sheep || 0) - 1,
+        },
+        pieces: {
+          ...player.pieces,
+          settlements: player.pieces.settlements - 1,
+        }
+      };
+      
+      // Place settlement (simplified - just log for now)
+      addLog(newGame, `${player.name} built a settlement!`);
+      setGame(newGame);
+      setBuildingMode(null);
+    } else if (buildingMode === 'road') {
+      const canAfford = (player.resources.wood || 0) >= 1 && (player.resources.brick || 0) >= 1;
+      if (!canAfford) {
+        addLog(game, `${player.name}: Not enough resources for road`);
+        return;
+      }
+      
+      const newGame = { ...game };
+      newGame.players = [...game.players];
+      newGame.players[player.id] = {
+        ...player,
+        resources: {
+          ...player.resources,
+          wood: (player.resources.wood || 0) - 1,
+          brick: (player.resources.brick || 0) - 1,
+        },
+        pieces: {
+          ...player.pieces,
+          roads: player.pieces.roads - 1,
+        }
+      };
+      
+      addLog(newGame, `${player.name} built a road!`);
+      setGame(newGame);
+      setBuildingMode(null);
+    } else if (buildingMode === 'city') {
+      const canAfford = (player.resources.wheat || 0) >= 2 && (player.resources.ore || 0) >= 3;
+      if (!canAfford) {
+        addLog(game, `${player.name}: Not enough resources for city`);
+        return;
+      }
+      
+      const newGame = { ...game };
+      newGame.players = [...game.players];
+      newGame.players[player.id] = {
+        ...player,
+        resources: {
+          ...player.resources,
+          wheat: (player.resources.wheat || 0) - 2,
+          ore: (player.resources.ore || 0) - 3,
+        },
+        pieces: {
+          ...player.pieces,
+          settlements: player.pieces.settlements + 1,
+          cities: player.pieces.cities - 1,
+        }
+      };
+      
+      addLog(newGame, `${player.name} upgraded to a city!`);
+      setGame(newGame);
+      setBuildingMode(null);
+    }
   };
 
   // Get hex color based on resource
@@ -81,7 +177,7 @@ function App() {
 
   // Render hex
   const renderHex = (hex: Hex) => {
-    const size = 80;
+    const size = 70;
     const x = size * (3/2 * hex.q);
     const y = size * (Math.sqrt(3)/2 * hex.q + Math.sqrt(3) * hex.r);
     
@@ -93,14 +189,18 @@ function App() {
     }
     
     return (
-      <g key={hex.id} transform={`translate(${200 + x}, ${150 + y})`}>
+      <g 
+        key={hex.id} 
+        transform={`translate(${350 + x}, ${250 + y})`}
+        onClick={() => handleBoardClick(hex.id)}
+        style={{ cursor: buildingMode ? 'pointer' : 'default' }}
+      >
         <polygon
           points={points.join(' ')}
           fill={getHexColor(hex.resource)}
           stroke="#8b4513"
           strokeWidth="3"
           className="hex"
-          onClick={() => setSelectedHex(hex)}
         />
         {hex.number && (
           <circle cx="0" cy="0" r="18" fill={hex.hasRobber ? '#333' : '#fff'} />
@@ -127,13 +227,13 @@ function App() {
   // Render vertices (settlements)
   const renderVertices = () => {
     return game.board.vertices.map(vertex => {
-      const x = 80 * (3/2 * vertex.q);
-      const y = 80 * (Math.sqrt(3)/2 * vertex.q + Math.sqrt(3) * vertex.r);
+      const x = 70 * (3/2 * vertex.q);
+      const y = 70 * (Math.sqrt(3)/2 * vertex.q + Math.sqrt(3) * vertex.r);
       
       // Calculate actual position
       const angle = (vertex.location * 60 - 30) * Math.PI / 180;
-      const px = 200 + x + 70 * Math.cos(angle);
-      const py = 150 + y + 50 * Math.sin(angle);
+      const px = 350 + x + 60 * Math.cos(angle);
+      const py = 250 + y + 45 * Math.sin(angle);
       
       // Check for settlements/cities
       const pieces = Object.entries(vertex.settlements)
@@ -159,13 +259,13 @@ function App() {
   // Render edges (roads)
   const renderEdges = () => {
     return game.board.edges.map(edge => {
-      const x = 80 * (3/2 * edge.q);
-      const y = 80 * (Math.sqrt(3)/2 * edge.q + Math.sqrt(3) * edge.r);
+      const x = 70 * (3/2 * edge.q);
+      const y = 70 * (Math.sqrt(3)/2 * edge.q + Math.sqrt(3) * edge.r);
       
       // Edge midpoint
       const angle = (edge.location * 60) * Math.PI / 180;
-      const px = 200 + x + 60 * Math.cos(angle);
-      const py = 150 + y + 60 * Math.sin(angle);
+      const px = 350 + x + 55 * Math.cos(angle);
+      const py = 250 + y + 55 * Math.sin(angle);
       
       const roads = Object.entries(edge.roads)
         .filter(([, type]) => type);
@@ -235,7 +335,7 @@ function App() {
       <div className="game-area">
         {/* Board */}
         <div className="board-container">
-          <svg width="600" height="450" className="board">
+          <svg width="700" height="500" viewBox="0 0 700 500" className="board">
             {game.board.hexes.map(renderHex)}
             {renderEdges()}
             {renderVertices()}
@@ -264,6 +364,15 @@ function App() {
               </button>
             )}
           </div>
+
+          {/* Building mode indicator */}
+          {buildingMode && (
+            <div style={{ padding: '10px', background: '#27ae60', borderRadius: '8px', marginBottom: '15px', textAlign: 'center' }}>
+              <strong>🏗️ Placing {buildingMode}!</strong>
+              <br />
+              <small>Click on the board to place</small>
+            </div>
+          )}
 
           {/* Build buttons */}
           <div className="build-section">
