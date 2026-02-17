@@ -21,12 +21,15 @@ export function createInitialGameState(): GameState {
   // Shuffle dev cards
   const shuffledDevCards = [...DEV_CARDS].sort(() => Math.random() - 0.5);
   
+  // Give human player starting resources for testing
   const players: Player[] = [0, 1, 2, 3].map(i => ({
     id: i,
     name: PLAYER_NAMES[i],
     color: PLAYER_COLORS[i],
-    resources: {
-      wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0
+    resources: i === 0 ? { 
+      wood: 5, brick: 5, sheep: 5, wheat: 5, ore: 5 
+    } : { 
+      wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0 
     },
     pieces: {
       roads: 15,
