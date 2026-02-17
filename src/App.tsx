@@ -60,8 +60,8 @@ function App() {
     addLog(game, `${currentPlayer?.name} selected to build ${type}`);
   };
 
-  // Handle click on board - find nearest vertex/edge and place piece
-  const handleBoardClick = (hexId: string) => {
+  // Handle click on board - place piece on first available spot
+  const handleBoardClick = () => {
     if (!buildingMode || !isHumanTurn) return;
     
     const player = currentPlayer;
@@ -111,7 +111,7 @@ function App() {
       }
       
       // Place road on the edge
-      edge.roads[player.id] = true;
+      edge.roads[player.id] = 'road';
       
       // Deduct resources
       const newGame = { ...game };
@@ -132,7 +132,6 @@ function App() {
       addLog(newGame, `${player.name} built a road!`);
       setGame(newGame);
       setBuildingMode(null);
-    }
     } else if (buildingMode === 'city') {
       const canAfford = (player.resources.wheat || 0) >= 2 && (player.resources.ore || 0) >= 3;
       if (!canAfford) {
@@ -199,7 +198,7 @@ function App() {
       <g 
         key={hex.id} 
         transform={`translate(${x}, ${y})`}
-        onClick={() => handleBoardClick(hex.id)}
+        onClick={() => handleBoardClick()}
         style={{ cursor: buildingMode ? 'pointer' : 'default' }}
       >
         <polygon
