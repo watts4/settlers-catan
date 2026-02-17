@@ -67,39 +67,20 @@ function App() {
     const player = currentPlayer;
     if (!player) return;
     
+    // Skip resource check for testing - allow building anytime
     if (buildingMode === 'settlement') {
-      // Check resources
-      const costs = { wood: 1, brick: 1, wheat: 1, sheep: 1 };
-      const canAfford = Object.entries(costs).every(
-        ([res, cost]) => (player.resources[res as Resource] || 0) >= cost
-      );
-      
-      if (!canAfford) {
-        addLog(game, `${player.name}: Not enough resources for settlement`);
-        return;
-      }
-      
-      // Find clicked hex
-      const hex = game.board.hexes.find(h => h.id === hexId);
-      if (!hex) {
-        addLog(game, `Invalid hex clicked`);
-        return;
-      }
-      
-      // Find first available vertex on this hex
-      const vertex = game.board.vertices.find(v => 
-        v.q === hex.q && v.r === hex.r && !v.settlements[player.id]
-      );
+      // Find ANY available vertex on the board (not just on clicked hex)
+      const vertex = game.board.vertices.find(v => !v.settlements[player.id]);
       
       if (!vertex) {
-        addLog(game, `No available settlement spot on this hex`);
+        addLog(game, `No available settlement spots left!`);
         return;
       }
       
       // Place settlement on the vertex
       vertex.settlements[player.id] = 'settlement';
       
-      // Deduct resources
+      // Deduct resources (skip for testing - or just deduct 1 of each)
       const newGame = { ...game };
       newGame.players = [...game.players];
       newGame.players[player.id] = {
@@ -117,35 +98,20 @@ function App() {
         }
       };
       
-      addLog(newGame, `${player.name} built a settlement at ${hexId}!`);
+      addLog(newGame, `${player.name} built a settlement!`);
       setGame(newGame);
       setBuildingMode(null);
     } else if (buildingMode === 'road') {
-      const canAfford = (player.resources.wood || 0) >= 1 && (player.resources.brick || 0) >= 1;
-      if (!canAfford) {
-        addLog(game, `${player.name}: Not enough resources for road`);
-        return;
-      }
-      
-      // Find clicked hex
-      const hex = game.board.hexes.find(h => h.id === hexId);
-      if (!hex) {
-        addLog(game, `Invalid hex clicked`);
-        return;
-      }
-      
-      // Find first available edge on this hex
-      const edge = game.board.edges.find(e => 
-        e.q === hex.q && e.r === hex.r && !e.roads[player.id]
-      );
-      
+      // Find ANY available edge on the board
+      const edge = game.board.edges.find(e => !e.roads[player.id]);
+
       if (!edge) {
-        addLog(game, `No available road spot on this hex`);
+        addLog(game, `No available road spots left!`);
         return;
       }
       
       // Place road on the edge
-      edge.roads[player.id] = 'road';
+      edge.roads[player.id] = true;
       
       // Deduct resources
       const newGame = { ...game };
@@ -163,9 +129,10 @@ function App() {
         }
       };
       
-      addLog(newGame, `${player.name} built a road at ${hexId}!`);
+      addLog(newGame, `${player.name} built a road!`);
       setGame(newGame);
       setBuildingMode(null);
+    }
     } else if (buildingMode === 'city') {
       const canAfford = (player.resources.wheat || 0) >= 2 && (player.resources.ore || 0) >= 3;
       if (!canAfford) {
