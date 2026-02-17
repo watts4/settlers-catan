@@ -60,8 +60,8 @@ function App() {
     addLog(game, `${currentPlayer?.name} selected to build ${type}`);
   };
 
-  // Handle hex/vertex click for building
-  const handleBoardClick = (_hexId: string) => {
+  // Handle click on board - find nearest vertex/edge and place piece
+  const handleBoardClick = (hexId: string) => {
     if (!buildingMode || !isHumanTurn) return;
     
     const player = currentPlayer;
@@ -78,6 +78,26 @@ function App() {
         addLog(game, `${player.name}: Not enough resources for settlement`);
         return;
       }
+      
+      // Find clicked hex
+      const hex = game.board.hexes.find(h => h.id === hexId);
+      if (!hex) {
+        addLog(game, `Invalid hex clicked`);
+        return;
+      }
+      
+      // Find first available vertex on this hex
+      const vertex = game.board.vertices.find(v => 
+        v.q === hex.q && v.r === hex.r && !v.settlements[player.id]
+      );
+      
+      if (!vertex) {
+        addLog(game, `No available settlement spot on this hex`);
+        return;
+      }
+      
+      // Place settlement on the vertex
+      vertex.settlements[player.id] = 'settlement';
       
       // Deduct resources
       const newGame = { ...game };
@@ -97,8 +117,7 @@ function App() {
         }
       };
       
-      // Place settlement (simplified - just log for now)
-      addLog(newGame, `${player.name} built a settlement!`);
+      addLog(newGame, `${player.name} built a settlement at ${hexId}!`);
       setGame(newGame);
       setBuildingMode(null);
     } else if (buildingMode === 'road') {
@@ -108,6 +127,27 @@ function App() {
         return;
       }
       
+      // Find clicked hex
+      const hex = game.board.hexes.find(h => h.id === hexId);
+      if (!hex) {
+        addLog(game, `Invalid hex clicked`);
+        return;
+      }
+      
+      // Find first available edge on this hex
+      const edge = game.board.edges.find(e => 
+        e.q === hex.q && e.r === hex.r && !e.roads[player.id]
+      );
+      
+      if (!edge) {
+        addLog(game, `No available road spot on this hex`);
+        return;
+      }
+      
+      // Place road on the edge
+      edge.roads[player.id] = 'road';
+      
+      // Deduct resources
       const newGame = { ...game };
       newGame.players = [...game.players];
       newGame.players[player.id] = {
@@ -123,7 +163,7 @@ function App() {
         }
       };
       
-      addLog(newGame, `${player.name} built a road!`);
+      addLog(newGame, `${player.name} built a road at ${hexId}!`);
       setGame(newGame);
       setBuildingMode(null);
     } else if (buildingMode === 'city') {
@@ -177,7 +217,7 @@ function App() {
 
   // Render hex
   const renderHex = (hex: Hex) => {
-    const size = 70;
+    const size = 55;
     const x = size * (3/2 * hex.q);
     const y = size * (Math.sqrt(3)/2 * hex.q + Math.sqrt(3) * hex.r);
     
@@ -191,7 +231,7 @@ function App() {
     return (
       <g 
         key={hex.id} 
-        transform={`translate(${350 + x}, ${250 + y})`}
+        transform={`translate(${x}, ${y})`}
         onClick={() => handleBoardClick(hex.id)}
         style={{ cursor: buildingMode ? 'pointer' : 'default' }}
       >
@@ -227,13 +267,14 @@ function App() {
   // Render vertices (settlements)
   const renderVertices = () => {
     return game.board.vertices.map(vertex => {
-      const x = 70 * (3/2 * vertex.q);
-      const y = 70 * (Math.sqrt(3)/2 * vertex.q + Math.sqrt(3) * vertex.r);
+      const size = 55;
+      const x = size * (3/2 * vertex.q);
+      const y = size * (Math.sqrt(3)/2 * vertex.q + Math.sqrt(3) * vertex.r);
       
       // Calculate actual position
       const angle = (vertex.location * 60 - 30) * Math.PI / 180;
-      const px = 350 + x + 60 * Math.cos(angle);
-      const py = 250 + y + 45 * Math.sin(angle);
+      const px = x + 48 * Math.cos(angle);
+      const py = y + 35 * Math.sin(angle);
       
       // Check for settlements/cities
       const pieces = Object.entries(vertex.settlements)
@@ -259,13 +300,14 @@ function App() {
   // Render edges (roads)
   const renderEdges = () => {
     return game.board.edges.map(edge => {
-      const x = 70 * (3/2 * edge.q);
-      const y = 70 * (Math.sqrt(3)/2 * edge.q + Math.sqrt(3) * edge.r);
+      const size = 55;
+      const x = size * (3/2 * edge.q);
+      const y = size * (Math.sqrt(3)/2 * edge.q + Math.sqrt(3) * edge.r);
       
       // Edge midpoint
       const angle = (edge.location * 60) * Math.PI / 180;
-      const px = 350 + x + 55 * Math.cos(angle);
-      const py = 250 + y + 55 * Math.sin(angle);
+      const px = x + 45 * Math.cos(angle);
+      const py = y + 45 * Math.sin(angle);
       
       const roads = Object.entries(edge.roads)
         .filter(([, type]) => type);
@@ -333,9 +375,9 @@ function App() {
 
       {/* Main Game Area */}
       <div className="game-area">
-        {/* Board */}
+        {/* Board - larger viewBox to show full hex grid */}
         <div className="board-container">
-          <svg width="700" height="500" viewBox="0 0 700 500" className="board">
+          <svg width="900" height="600" viewBox="-200 -150 900 600" className="board">
             {game.board.hexes.map(renderHex)}
             {renderEdges()}
             {renderVertices()}
