@@ -230,6 +230,32 @@ function App() {
     );
   };
 
+  // Helper: Get the two vertex positions for a given edge
+  const getEdgeVertexPositions = (edge: typeof game.board.edges[0]) => {
+    const size = 55;
+    const hexCenterX = size * (3/2 * edge.q);
+    const hexCenterY = size * (Math.sqrt(3)/2 * edge.q + Math.sqrt(3) * edge.r);
+    
+    // Edge location determines which two vertices it connects
+    // For edge.location 0-5, the vertices are at locations (loc) and (loc + 1) % 6
+    const loc1 = edge.location;
+    const loc2 = (edge.location + 1) % 6;
+    
+    // Vertex angles for pointy-top hex: 0°, 60°, 120°, 180°, 240°, 300°
+    const angle1 = (loc1 * 60 + 30) * Math.PI / 180;
+    const angle2 = (loc2 * 60 + 30) * Math.PI / 180;
+    
+    // Use the same vertex radius as renderVertices
+    const vertexRadius = 48;
+    
+    const x1 = hexCenterX + vertexRadius * Math.cos(angle1);
+    const y1 = hexCenterY + vertexRadius * Math.sin(angle1);
+    const x2 = hexCenterX + vertexRadius * Math.cos(angle2);
+    const y2 = hexCenterY + vertexRadius * Math.sin(angle2);
+    
+    return { x1, y1, x2, y2 };
+  };
+
   // Render vertices (settlements)
   const renderVertices = () => {
     return game.board.vertices.map(vertex => {
@@ -266,29 +292,22 @@ function App() {
   // Render edges (roads)
   const renderEdges = () => {
     return game.board.edges.map(edge => {
-      const size = 55;
-      const x = size * (3/2 * edge.q);
-      const y = size * (Math.sqrt(3)/2 * edge.q + Math.sqrt(3) * edge.r);
-      
-      // Edge midpoint
-      const angle = (edge.location * 60) * Math.PI / 180;
-      const px = x + 45 * Math.cos(angle);
-      const py = y + 45 * Math.sin(angle);
-      
       const roads = Object.entries(edge.roads)
         .filter(([, type]) => type);
       
       return roads.map(([playerId]) => {
         const player = game.players[parseInt(playerId)];
+        const { x1, y1, x2, y2 } = getEdgeVertexPositions(edge);
+        
         return (
           <line
             key={`${edge.id}-${playerId}`}
-            x1={px - 8}
-            y1={py - 8}
-            x2={px + 8}
-            y2={py + 8}
+            x1={x1}
+            y1={y1}
+            x2={x2}
+            y2={y2}
             stroke={player.color}
-            strokeWidth="6"
+            strokeWidth="8"
             strokeLinecap="round"
           />
         );
