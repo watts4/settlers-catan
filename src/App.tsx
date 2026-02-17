@@ -49,6 +49,11 @@ function App() {
     });
   };
 
+  // New game
+  const handleNewGame = () => {
+    setGame(createInitialGameState());
+  };
+
   // Build action
   const handleBuild = (type: 'road' | 'settlement' | 'city') => {
     setBuildingMode(type);
@@ -193,6 +198,9 @@ function App() {
       {/* Header */}
       <header className="header">
         <h1>🎲 Settlers of Catan</h1>
+        <button className="btn btn-secondary" onClick={handleNewGame} style={{maxWidth: '120px', margin: '10px auto 0'}}>
+          New Game
+        </button>
         <div className="turn-info">
           Turn {game.turn} | {currentPlayer?.name}'s Turn
         </div>
