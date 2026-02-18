@@ -53,6 +53,23 @@ export interface Player {
   isHuman: boolean;
 }
 
+export type GamePhase = 
+  | 'setup1'      // First settlement placement (clockwise)
+  | 'setup2'      // Second settlement placement (reverse order)
+  | 'playing'     // Main game - rolling
+  | 'trading'     // Trading phase
+  | 'building'    // Building phase
+  | 'robing'      // Moving robber after rolling 7
+  | 'discarding'  // Discarding cards after rolling 7
+  | 'gameOver';   // Game ended
+
+export interface GameLogEntry {
+  turn: number;
+  player: number;
+  action: string;
+  timestamp: number;
+}
+
 export interface GameState {
   players: Player[];
   board: {
@@ -62,7 +79,7 @@ export interface GameState {
     ports: Port[];
   };
   currentPlayer: number;
-  phase: 'setup' | 'playing' | 'trading' | 'gameOver';
+  phase: GamePhase;
   dice: [number, number] | null;
   turn: number;
   devCardDeck: string[];
@@ -70,11 +87,11 @@ export interface GameState {
   largestArmyHolder: number | null;
   winner: number | null;
   log: GameLogEntry[];
-}
-
-export interface GameLogEntry {
-  turn: number;
-  player: number;
-  action: string;
-  timestamp: number;
+  // New fields for setup phase
+  setupRound: number;  // 1 or 2
+  playersFinishedSetup: number[];  // track who has completed setup
+  // New fields for 7 handling
+  playersToDiscard: number[];  // players who need to discard
+  selectedHexForRobber: Hex | null;  // hex selected for robber
+  stealFromPlayer: number | null;  // player to steal from
 }
