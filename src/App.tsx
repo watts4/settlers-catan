@@ -136,7 +136,7 @@ const RESOURCES: Resource[] = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
 
 // Icons used in UI (player cards, build buttons, trade, log)
 const HEX_ICON: Record<Resource, string> = {
-  wood: '🪵', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '🪨', desert: '🏜️', gold: '💰',
+  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '⛏️', desert: '🏜️', gold: '💰',
 };
 
 // Large illustrated emoji shown on each hex tile — no text labels, just visual art
@@ -145,7 +145,7 @@ const HEX_TILE_EMOJI: Record<Resource, string[]> = {
   brick:  ['🧱', '⛰️'],        // brick + hill
   sheep:  ['🐑', '🌿'],        // sheep on grass
   wheat:  ['🌾', '🌾'],        // wheat sheaves
-  ore:    ['⛰️', '🪨'],        // mountains + ore
+  ore:    ['⛰️', '⛏️'],        // mountains + pickaxe
   desert: ['🏜️'],              // desert
   gold:   ['💰'],
 };
@@ -167,7 +167,7 @@ const PROBABILITY_DOTS: Record<number, number> = {
 };
 
 const PORT_ICON: Record<string, string> = {
-  wood: '🪵', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '🪨', generic: '⚓',
+  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '⛏️', generic: '⚓',
 };
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -537,7 +537,7 @@ function App() {
   };
 
   const handleBuyDevCard = () => {
-    if (!canBuildDevCard) { setBuildError('Need 1🌾 1🐑 1🪨 to buy a dev card'); return; }
+    if (!canBuildDevCard) { setBuildError('Need 1🌾 1🐑 1⛏️ to buy a dev card'); return; }
     setGame(prev => {
       const newGame = {
         ...prev,
@@ -1181,9 +1181,9 @@ function App() {
                 <button
                   className={`btn ${!canBuildDevCard ? 'cannot-afford' : ''}`}
                   onClick={handleBuyDevCard} disabled={!isHumanTurn || mustMoveRobber || !canBuildDevCard}
-                  title="Need 1🌾 1🐑 1🪨"
+                  title="Need 1🌾 1🐑 1⛏️"
                 >
-                  🃏 Dev Card {!canBuildDevCard && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌾1🐑1🪨)</span>}
+                  🃏 Dev Card {!canBuildDevCard && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌾1🐑1⛏️)</span>}
                 </button>
               </div>
 
