@@ -194,7 +194,7 @@ function App() {
   const canBuildDevCard = canAfford(currentPlayer, BUILD_COSTS.devCard) && game.devCardDeck.length > 0;
 
   const tradeRatios = isHumanTurn ? getTradeRatios(game, game.currentPlayer) : {};
-  const totalOfferCredits = (Object.keys(tradeOffer) as Resource[]).reduce((s, r) => s + (tradeOffer[r] || 0), 0);
+  const totalOfferCredits = RESOURCES.reduce((s, r) => s + Math.floor((tradeOffer[r] || 0) / (tradeRatios[r] || 4)), 0);
   const totalRequestAmount = (Object.keys(tradeRequest) as Resource[]).reduce((s, r) => s + (tradeRequest[r] || 0), 0);
 
   // Robber state: human moves robber after rolling 7
@@ -465,9 +465,10 @@ function App() {
     setGame(prev => {
       const newResources = { ...prev.players[prev.currentPlayer].resources };
       RESOURCES.forEach(r => {
-        const batches = tradeOffer[r] || 0;
         const ratio = tradeRatios[r] || 4;
-        newResources[r] = (newResources[r] || 0) - batches * ratio;
+        const offered = tradeOffer[r] || 0;
+        const usedBatches = Math.floor(offered / ratio);
+        newResources[r] = (newResources[r] || 0) - usedBatches * ratio;
       });
       RESOURCES.forEach(r => {
         newResources[r] = (newResources[r] || 0) + (tradeRequest[r] || 0);
@@ -476,7 +477,7 @@ function App() {
         ...prev,
         players: prev.players.map(p => p.id !== player.id ? p : { ...p, resources: newResources }),
       };
-      const giveStr = RESOURCES.filter(r => tradeOffer[r]).map(r => `${(tradeOffer[r]||0) * (tradeRatios[r]||4)}${HEX_ICON[r]}`).join(' ');
+      const giveStr = RESOURCES.filter(r => tradeOffer[r]).map(r => `${tradeOffer[r]}${HEX_ICON[r]}`).join(' ');
       const getStr = RESOURCES.filter(r => tradeRequest[r]).map(r => `${tradeRequest[r]}${HEX_ICON[r]}`).join(' ');
       addLog(newGame, `${player.name} traded ${giveStr} → ${getStr}`);
       return newGame;
@@ -948,6 +949,102 @@ function App() {
             <>
               <h3>Actions</h3>
 
+              {/* Dev Cards Panel — shown first so it's always visible */}
+              {isHumanTurn && !isSetup && (
+                <div style={{ background: '#1a2a3a', border: '2px solid #8b6914', borderRadius: '8px', padding: '10px', marginBottom: '10px' }}>
+                  <h4 style={{ margin: '0 0 8px 0', color: '#ffd700' }}>🃏 Dev Cards {currentPlayer.devCards.length > 0 && `(${currentPlayer.devCards.length})`}</h4>
+                  {currentPlayer.devCards.length === 0 ? (
+                    <div style={{ fontSize: '0.8rem', color: '#666' }}>None — buy one in the Build section below</div>
+                  ) : devCardMode === 'plenty' ? (
+                    <div>
+                      <div style={{ fontSize: '0.85rem', color: '#ffd700', marginBottom: '6px' }}>
+                        🌟 Year of Plenty — pick {2 - yearOfPlentyPicks.length} resource{2 - yearOfPlentyPicks.length !== 1 ? 's' : ''}:
+                        {yearOfPlentyPicks.length > 0 && <span> {yearOfPlentyPicks.map(r => HEX_ICON[r]).join(' ')}</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                        {RESOURCES.map(r => (
+                          <button key={r} onClick={() => handlePickYearOfPlentyResource(r)}
+                            style={{ padding: '5px 9px', background: '#27ae60', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem' }}>
+                            {HEX_ICON[r]}
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={() => { setDevCardMode(null); setYearOfPlentyPicks([]); }}
+                        style={{ fontSize: '0.75rem', padding: '3px 8px', background: '#555', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  ) : devCardMode === 'monopoly' ? (
+                    <div>
+                      <div style={{ fontSize: '0.85rem', color: '#ffd700', marginBottom: '6px' }}>💰 Monopoly — pick a resource to steal from all players:</div>
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                        {RESOURCES.map(r => (
+                          <button key={r} onClick={() => handlePlayMonopoly(r)}
+                            style={{ padding: '5px 9px', background: '#e74c3c', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem' }}
+                            title={r}>
+                            {HEX_ICON[r]}
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={() => setDevCardMode(null)}
+                        style={{ fontSize: '0.75rem', padding: '3px 8px', background: '#555', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {(['knight', 'road', 'plenty', 'monopoly', 'victory'] as const).map(cardType => {
+                        const count = currentPlayer.devCards.filter(c => c === cardType).length;
+                        if (count === 0) return null;
+                        const canPlay = cardType !== 'victory' && !devCardPlayedThisTurn && !mustMoveRobber && game.phase === 'playing';
+                        const cardLabel: Record<string, string> = {
+                          knight: '⚔️ Knight',
+                          road: '🛣️ Road Building',
+                          plenty: '🌟 Year of Plenty',
+                          monopoly: '💰 Monopoly',
+                          victory: '🏆 Victory Point',
+                        };
+                        const cardDesc: Record<string, string> = {
+                          knight: 'Move robber, steal a resource',
+                          road: 'Place 2 free roads',
+                          plenty: 'Take any 2 resources',
+                          monopoly: 'Steal all of 1 resource',
+                          victory: 'Counts as 1 VP',
+                        };
+                        return (
+                          <div key={cardType} style={{ background: '#253545', borderRadius: '5px', padding: '6px 8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div>
+                                <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{cardLabel[cardType]}</span>
+                                {count > 1 && <span style={{ color: '#aaa', marginLeft: '4px' }}>×{count}</span>}
+                                {cardType === 'victory' && <span style={{ color: '#ffd700', marginLeft: '4px' }}>(+{count} VP)</span>}
+                              </div>
+                              {canPlay && (
+                                <button
+                                  onClick={() => {
+                                    if (cardType === 'knight') handlePlayKnight();
+                                    else if (cardType === 'road') handlePlayRoadBuilding();
+                                    else if (cardType === 'plenty') setDevCardMode('plenty');
+                                    else if (cardType === 'monopoly') setDevCardMode('monopoly');
+                                  }}
+                                  style={{ padding: '4px 12px', background: '#e67e22', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                                >
+                                  Play
+                                </button>
+                              )}
+                              {cardType !== 'victory' && devCardPlayedThisTurn && (
+                                <span style={{ fontSize: '0.75rem', color: '#888' }}>used this turn</span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '2px' }}>{cardDesc[cardType]}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Robber prompt */}
               {robbingMode && isHumanTurn && (
                 <div style={{ padding: '12px', background: '#7b1a1a', borderRadius: '8px', marginBottom: '10px', textAlign: 'center' }}>
@@ -1038,91 +1135,6 @@ function App() {
                 </button>
               </div>
 
-              {/* Dev Cards Panel */}
-              {isHumanTurn && !isSetup && (
-                <div className="dev-cards-section" style={{ background: '#1a2a3a', borderRadius: '8px', padding: '10px', marginBottom: '10px' }}>
-                  <h4 style={{ margin: '0 0 8px 0' }}>🃏 Your Dev Cards</h4>
-                  {currentPlayer.devCards.length === 0 ? (
-                    <div style={{ fontSize: '0.8rem', color: '#666' }}>No dev cards</div>
-                  ) : devCardMode === 'plenty' ? (
-                    <div>
-                      <div style={{ fontSize: '0.85rem', color: '#ffd700', marginBottom: '6px' }}>
-                        🌟 Year of Plenty — pick {2 - yearOfPlentyPicks.length} resource{2 - yearOfPlentyPicks.length !== 1 ? 's' : ''}:
-                        {yearOfPlentyPicks.length > 0 && <span> {yearOfPlentyPicks.map(r => HEX_ICON[r]).join(' ')}</span>}
-                      </div>
-                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                        {RESOURCES.map(r => (
-                          <button key={r} onClick={() => handlePickYearOfPlentyResource(r)}
-                            style={{ padding: '5px 9px', background: '#27ae60', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem' }}>
-                            {HEX_ICON[r]}
-                          </button>
-                        ))}
-                      </div>
-                      <button onClick={() => { setDevCardMode(null); setYearOfPlentyPicks([]); }}
-                        style={{ fontSize: '0.75rem', padding: '3px 8px', background: '#555', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer' }}>
-                        Cancel
-                      </button>
-                    </div>
-                  ) : devCardMode === 'monopoly' ? (
-                    <div>
-                      <div style={{ fontSize: '0.85rem', color: '#ffd700', marginBottom: '6px' }}>💰 Monopoly — pick a resource to steal from all players:</div>
-                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                        {RESOURCES.map(r => (
-                          <button key={r} onClick={() => handlePlayMonopoly(r)}
-                            style={{ padding: '5px 9px', background: '#e74c3c', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem' }}
-                            title={r}>
-                            {HEX_ICON[r]}
-                          </button>
-                        ))}
-                      </div>
-                      <button onClick={() => setDevCardMode(null)}
-                        style={{ fontSize: '0.75rem', padding: '3px 8px', background: '#555', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer' }}>
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {(['knight', 'road', 'plenty', 'monopoly', 'victory'] as const).map(cardType => {
-                        const count = currentPlayer.devCards.filter(c => c === cardType).length;
-                        if (count === 0) return null;
-                        const canPlay = cardType !== 'victory' && !devCardPlayedThisTurn && !mustMoveRobber && game.phase === 'playing';
-                        const cardLabel: Record<string, string> = {
-                          knight: '⚔️ Knight',
-                          road: '🛣️ Road Building',
-                          plenty: '🌟 Year of Plenty',
-                          monopoly: '💰 Monopoly',
-                          victory: '🏆 Victory Point',
-                        };
-                        return (
-                          <div key={cardType} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', background: '#253545', borderRadius: '5px' }}>
-                            <span style={{ fontSize: '0.85rem' }}>
-                              {cardLabel[cardType]} ×{count}
-                              {cardType === 'victory' && <span style={{ color: '#ffd700', marginLeft: '4px' }}>(+{count} VP)</span>}
-                            </span>
-                            {canPlay && (
-                              <button
-                                onClick={() => {
-                                  if (cardType === 'knight') handlePlayKnight();
-                                  else if (cardType === 'road') handlePlayRoadBuilding();
-                                  else if (cardType === 'plenty') setDevCardMode('plenty');
-                                  else if (cardType === 'monopoly') setDevCardMode('monopoly');
-                                }}
-                                style={{ padding: '3px 10px', background: '#e67e22', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
-                              >
-                                Play
-                              </button>
-                            )}
-                            {cardType !== 'victory' && devCardPlayedThisTurn && (
-                              <span style={{ fontSize: '0.75rem', color: '#888' }}>(used)</span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* Bank Trade */}
               <div className="trade-section">
                 <h4>🏦 Trade with Bank</h4>
@@ -1130,41 +1142,48 @@ function App() {
                   Your ratios: {RESOURCES.map(r => `${HEX_ICON[r]}=${tradeRatios[r] || 4}:1`).join('  ')}
                 </div>
 
-                {/* Give row */}
+                {/* Give row — each tap adds 1 resource; you need ratio-many to earn a credit */}
                 <div style={{ marginBottom: '6px' }}>
-                  <div style={{ fontSize: '0.8rem', color: '#bbb', marginBottom: '4px' }}>Give (tap to add, tap − to remove):</div>
+                  <div style={{ fontSize: '0.8rem', color: '#bbb', marginBottom: '4px' }}>Give (tap to add +1, tap − to remove):</div>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     {RESOURCES.map(r => {
                       const ratio = tradeRatios[r] || 4;
-                      const batches = tradeOffer[r] || 0;
+                      const offered = tradeOffer[r] || 0;
                       const have = currentPlayer?.resources[r] || 0;
-                      const canAddBatch = have >= (batches + 1) * ratio;
-                      const amount = batches * ratio;
+                      const canAdd = offered < have;
+                      const credits = Math.floor(offered / ratio);
                       return (
                         <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                           <button
                             onClick={() => {
-                              if (!isHumanTurn || mustMoveRobber) return;
-                              if (canAddBatch) setTradeOffer(prev => ({ ...prev, [r]: batches + 1 }));
+                              if (!isHumanTurn || mustMoveRobber || !canAdd) return;
+                              setTradeOffer(prev => ({ ...prev, [r]: offered + 1 }));
                             }}
                             disabled={!isHumanTurn || mustMoveRobber}
                             style={{
-                              padding: '4px 7px', fontSize: '0.8rem', border: batches > 0 ? '2px solid #e67e22' : '2px solid transparent',
-                              borderRadius: '5px', background: batches > 0 ? '#7a3d0a' : canAddBatch ? '#2c3e50' : '#1a1a2e',
-                              color: canAddBatch || batches > 0 ? '#fff' : '#555',
-                              cursor: canAddBatch ? 'pointer' : 'default', minWidth: '44px',
+                              padding: '4px 7px', fontSize: '0.8rem',
+                              border: offered > 0 ? '2px solid #e67e22' : '2px solid transparent',
+                              borderRadius: '5px',
+                              background: offered > 0 ? '#7a3d0a' : canAdd ? '#2c3e50' : '#1a1a2e',
+                              color: canAdd || offered > 0 ? '#fff' : '#555',
+                              cursor: canAdd ? 'pointer' : 'default', minWidth: '44px',
                             }}
-                            title={`${have} available, ${ratio}:1 ratio`}
+                            title={`Have ${have}, giving ${offered} (${ratio}:1)`}
                           >
-                            {HEX_ICON[r]}{amount > 0 ? ` ×${amount}` : ''}
-                            <div style={{ fontSize: '0.65rem', color: '#aaa' }}>{ratio}:1</div>
+                            {HEX_ICON[r]}{offered > 0 ? ` ×${offered}` : ''}
+                            <div style={{ fontSize: '0.6rem', color: credits > 0 ? '#ffd700' : '#888' }}>
+                              {credits > 0 ? `=${credits}cr` : `${ratio}:1`}
+                            </div>
                           </button>
-                          {batches > 0 && (
+                          {offered > 0 && (
                             <button
                               onClick={() => {
-                                const newBatches = batches - 1;
-                                setTradeOffer(prev => ({ ...prev, [r]: newBatches }));
-                                const newCredits = RESOURCES.reduce((s, r2) => s + (r2 === r ? newBatches : (tradeOffer[r2] || 0)), 0);
+                                const newOffered = offered - 1;
+                                setTradeOffer(prev => ({ ...prev, [r]: newOffered }));
+                                const newCredits = RESOURCES.reduce((s, r2) => {
+                                  const rat = tradeRatios[r2] || 4;
+                                  return s + Math.floor((r2 === r ? newOffered : (tradeOffer[r2] || 0)) / rat);
+                                }, 0);
                                 if (totalRequestAmount > newCredits) setTradeRequest({});
                               }}
                               style={{ fontSize: '0.7rem', padding: '1px 8px', background: '#555', border: 'none', borderRadius: '3px', color: '#fff', cursor: 'pointer' }}
@@ -1179,13 +1198,19 @@ function App() {
                 </div>
 
                 {/* Trade credits indicator */}
-                {totalOfferCredits > 0 && (
-                  <div style={{ fontSize: '0.8rem', color: '#27ae60', marginBottom: '6px', fontWeight: 'bold' }}>
-                    Trade credits: {totalOfferCredits} — used: {totalRequestAmount}/{totalOfferCredits}
+                {RESOURCES.some(r => (tradeOffer[r] || 0) > 0) && (
+                  <div style={{ fontSize: '0.8rem', marginBottom: '6px', padding: '4px 6px', background: '#1a2a1a', borderRadius: '4px' }}>
+                    {totalOfferCredits > 0
+                      ? <span style={{ color: '#27ae60', fontWeight: 'bold' }}>✓ {totalOfferCredits} trade credit{totalOfferCredits > 1 ? 's' : ''} — select what to receive below</span>
+                      : <span style={{ color: '#e67e22' }}>Need {RESOURCES.filter(r => (tradeOffer[r] || 0) > 0).map(r => `${(tradeRatios[r]||4) - (tradeOffer[r]||0)} more ${HEX_ICON[r]}`).join(', ')} for a credit</span>
+                    }
+                    {totalOfferCredits > 0 && totalRequestAmount > 0 && (
+                      <span style={{ color: '#aaa' }}> — used: {totalRequestAmount}/{totalOfferCredits}</span>
+                    )}
                   </div>
                 )}
 
-                {/* Get row */}
+                {/* Get row — only shown once you have at least 1 credit */}
                 {totalOfferCredits > 0 && (
                   <div style={{ marginBottom: '8px' }}>
                     <div style={{ fontSize: '0.8rem', color: '#bbb', marginBottom: '4px' }}>Get (tap to add):</div>
@@ -1233,7 +1258,7 @@ function App() {
                       disabled={totalRequestAmount > totalOfferCredits}
                       style={{ marginBottom: 0, flex: 1 }}
                     >
-                      Trade {RESOURCES.filter(r => tradeOffer[r]).map(r => `${(tradeOffer[r]||0)*(tradeRatios[r]||4)}${HEX_ICON[r]}`).join('+')} → {RESOURCES.filter(r => tradeRequest[r]).map(r => `${tradeRequest[r]}${HEX_ICON[r]}`).join('+')}
+                      Trade {RESOURCES.filter(r => (tradeOffer[r]||0) > 0).map(r => `${tradeOffer[r]}${HEX_ICON[r]}`).join('+')} → {RESOURCES.filter(r => (tradeRequest[r]||0) > 0).map(r => `${tradeRequest[r]}${HEX_ICON[r]}`).join('+')}
                     </button>
                   )}
                   {(totalOfferCredits > 0 || totalRequestAmount > 0) && (
