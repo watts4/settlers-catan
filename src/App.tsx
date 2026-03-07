@@ -182,6 +182,10 @@ function App() {
   const [roadBuildingRoadsLeft, setRoadBuildingRoadsLeft] = useState(0);
   const [yearOfPlentyPicks, setYearOfPlentyPicks] = useState<Resource[]>([]);
   const [devCardPlayedThisTurn, setDevCardPlayedThisTurn] = useState(false);
+  const [showPlayerTrade, setShowPlayerTrade] = useState(false);
+  const [playerTradeOffer, setPlayerTradeOffer] = useState<Partial<Record<Resource, number>>>({});
+  const [playerTradeRequest, setPlayerTradeRequest] = useState<Partial<Record<Resource, number>>>({});
+  const [playerTradeResponses, setPlayerTradeResponses] = useState<{ playerId: number; accepts: boolean }[]>([]);
 
   const currentPlayer = game.players[game.currentPlayer];
   const isSetup = game.phase === 'setup1' || game.phase === 'setup2';
@@ -436,6 +440,8 @@ function App() {
     setRoadBuildingRoadsLeft(0);
     setYearOfPlentyPicks([]);
     setDevCardPlayedThisTurn(false);
+    setShowPlayerTrade(false);
+    setPlayerTradeOffer({}); setPlayerTradeRequest({}); setPlayerTradeResponses([]);
     setGame(prev => ({
       ...prev,
       currentPlayer: (prev.currentPlayer + 1) % 4,
@@ -448,6 +454,7 @@ function App() {
     setBuildingMode(null); setTradeOffer({}); setTradeRequest({}); setBuildError(null);
     setDevCardMode(null); setRoadBuildingRoadsLeft(0); setYearOfPlentyPicks([]);
     setDevCardPlayedThisTurn(false);
+    setShowPlayerTrade(false); setPlayerTradeOffer({}); setPlayerTradeRequest({}); setPlayerTradeResponses([]);
     setGame(createInitialGameState());
   };
 
@@ -483,6 +490,50 @@ function App() {
       return newGame;
     });
     setTradeOffer({}); setTradeRequest({});
+  };
+
+  const handleProposePlayerTrade = () => {
+    const totalOff = RESOURCES.reduce((s, r) => s + (playerTradeOffer[r] || 0), 0);
+    const totalReq = RESOURCES.reduce((s, r) => s + (playerTradeRequest[r] || 0), 0);
+    if (totalOff === 0 || totalReq === 0) return;
+    const responses = game.players
+      .filter(p => !p.isHuman)
+      .map(p => {
+        const hasAll = RESOURCES.every(r => (p.resources[r] || 0) >= (playerTradeRequest[r] || 0));
+        // AI declines if they'd give away too much relative to what they get
+        const accepts = hasAll && totalOff > 0;
+        return { playerId: p.id, accepts };
+      });
+    setPlayerTradeResponses(responses);
+  };
+
+  const handleExecutePlayerTrade = (fromPlayerId: number) => {
+    const player = currentPlayer;
+    setGame(prev => {
+      const newPlayers = prev.players.map(p => {
+        if (p.id === player.id) {
+          const r = { ...p.resources };
+          RESOURCES.forEach(res => {
+            r[res] = (r[res] || 0) - (playerTradeOffer[res] || 0) + (playerTradeRequest[res] || 0);
+          });
+          return { ...p, resources: r };
+        }
+        if (p.id === fromPlayerId) {
+          const r = { ...p.resources };
+          RESOURCES.forEach(res => {
+            r[res] = (r[res] || 0) + (playerTradeOffer[res] || 0) - (playerTradeRequest[res] || 0);
+          });
+          return { ...p, resources: r };
+        }
+        return p;
+      });
+      const newGame = { ...prev, players: newPlayers };
+      const offerStr = RESOURCES.filter(r => (playerTradeOffer[r] || 0) > 0).map(r => `${playerTradeOffer[r]}${HEX_ICON[r]}`).join('+');
+      const reqStr = RESOURCES.filter(r => (playerTradeRequest[r] || 0) > 0).map(r => `${playerTradeRequest[r]}${HEX_ICON[r]}`).join('+');
+      addLog(newGame, `${player.name} traded ${offerStr} with ${prev.players[fromPlayerId].name} for ${reqStr}`);
+      return newGame;
+    });
+    setShowPlayerTrade(false); setPlayerTradeOffer({}); setPlayerTradeRequest({}); setPlayerTradeResponses([]);
   };
 
   const handleBuyDevCard = () => {
@@ -900,6 +951,7 @@ function App() {
         <div className="board-container">
           {/* viewBox expanded to show port symbols outside the hex grid */}
           <svg width="620" height="620" viewBox="-310 -310 620 620" className="board"
+            style={{ fontFamily: "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif" }}
             onClick={() => { if (buildingMode) { setBuildingMode(null); setRoadBuildingRoadsLeft(0); } }}>
             {game.board.hexes.map(renderHex)}
             {renderPorts()}
@@ -1135,6 +1187,109 @@ function App() {
                 </button>
               </div>
 
+              {/* Player Trade */}
+              {isHumanTurn && game.dice && !mustMoveRobber && (
+                <div className="trade-section">
+                  <h4>🤝 Trade with Players</h4>
+                  {!showPlayerTrade && playerTradeResponses.length === 0 && (
+                    <button className="btn" onClick={() => setShowPlayerTrade(true)} style={{ marginBottom: 0 }}>
+                      Propose a Trade
+                    </button>
+                  )}
+                  {showPlayerTrade && playerTradeResponses.length === 0 && (
+                    <div>
+                      <div style={{ display: 'flex', gap: '16px', marginBottom: '8px' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '0.8rem', color: '#bbb', marginBottom: '4px' }}>You give:</div>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {RESOURCES.map(r => {
+                              const offered = playerTradeOffer[r] || 0;
+                              const have = currentPlayer?.resources[r] || 0;
+                              return (
+                                <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                  <button
+                                    onClick={() => { if (offered < have) setPlayerTradeOffer(prev => ({ ...prev, [r]: offered + 1 })); }}
+                                    style={{ padding: '4px 6px', fontSize: '0.85rem', border: offered > 0 ? '2px solid #e67e22' : '2px solid transparent', borderRadius: '5px', background: offered > 0 ? '#7a3d0a' : have > 0 ? '#2c3e50' : '#1a1a2e', color: have > 0 ? '#fff' : '#555', cursor: have > 0 ? 'pointer' : 'default', minWidth: '38px' }}
+                                    title={`Have ${have}`}
+                                  >
+                                    {HEX_ICON[r]}{offered > 0 ? ` ×${offered}` : ''}
+                                  </button>
+                                  {offered > 0 && (
+                                    <button onClick={() => setPlayerTradeOffer(prev => ({ ...prev, [r]: offered - 1 }))}
+                                      style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#555', border: 'none', borderRadius: '3px', color: '#fff', cursor: 'pointer' }}>−</button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '0.8rem', color: '#bbb', marginBottom: '4px' }}>You get:</div>
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                            {RESOURCES.map(r => {
+                              const requested = playerTradeRequest[r] || 0;
+                              return (
+                                <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                  <button
+                                    onClick={() => setPlayerTradeRequest(prev => ({ ...prev, [r]: requested + 1 }))}
+                                    style={{ padding: '4px 6px', fontSize: '0.85rem', border: requested > 0 ? '2px solid #27ae60' : '2px solid transparent', borderRadius: '5px', background: requested > 0 ? '#0e4d28' : '#2c3e50', color: '#fff', cursor: 'pointer', minWidth: '38px' }}
+                                  >
+                                    {HEX_ICON[r]}{requested > 0 ? ` ×${requested}` : ''}
+                                  </button>
+                                  {requested > 0 && (
+                                    <button onClick={() => setPlayerTradeRequest(prev => ({ ...prev, [r]: requested - 1 }))}
+                                      style={{ fontSize: '0.65rem', padding: '1px 6px', background: '#555', border: 'none', borderRadius: '3px', color: '#fff', cursor: 'pointer' }}>−</button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button className="btn btn-primary"
+                          onClick={handleProposePlayerTrade}
+                          disabled={RESOURCES.every(r => !(playerTradeOffer[r])) || RESOURCES.every(r => !(playerTradeRequest[r]))}
+                          style={{ flex: 1, marginBottom: 0 }}>
+                          Send Proposal
+                        </button>
+                        <button onClick={() => { setShowPlayerTrade(false); setPlayerTradeOffer({}); setPlayerTradeRequest({}); }}
+                          style={{ padding: '6px 12px', background: '#555', border: 'none', borderRadius: '5px', color: '#fff', cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {playerTradeResponses.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '0.85rem', color: '#ffd700', marginBottom: '8px' }}>
+                        Offering: {RESOURCES.filter(r => playerTradeOffer[r]).map(r => `${playerTradeOffer[r]}${HEX_ICON[r]}`).join(' ')} → Getting: {RESOURCES.filter(r => playerTradeRequest[r]).map(r => `${playerTradeRequest[r]}${HEX_ICON[r]}`).join(' ')}
+                      </div>
+                      {playerTradeResponses.map(({ playerId, accepts }) => {
+                        const p = game.players[playerId];
+                        return (
+                          <div key={playerId} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                            <span style={{ color: p.color, fontWeight: 'bold', minWidth: '50px' }}>{p.name}</span>
+                            {accepts ? (
+                              <button onClick={() => handleExecutePlayerTrade(playerId)}
+                                style={{ padding: '4px 12px', background: '#27ae60', border: 'none', borderRadius: '5px', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>
+                                ✓ Accepts — Trade!
+                              </button>
+                            ) : (
+                              <span style={{ color: '#888', fontSize: '0.85rem' }}>✗ Declines</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                      <button onClick={() => { setPlayerTradeResponses([]); setShowPlayerTrade(true); }}
+                        style={{ marginTop: '4px', padding: '4px 10px', background: '#555', border: 'none', borderRadius: '5px', color: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}>
+                        ← Edit Offer
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Bank Trade */}
               <div className="trade-section">
                 <h4>🏦 Trade with Bank</h4>
@@ -1210,44 +1365,47 @@ function App() {
                   </div>
                 )}
 
-                {/* Get row — only shown once you have at least 1 credit */}
-                {totalOfferCredits > 0 && (
-                  <div style={{ marginBottom: '8px' }}>
-                    <div style={{ fontSize: '0.8rem', color: '#bbb', marginBottom: '4px' }}>Get (tap to add):</div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {RESOURCES.map(r => {
-                        const requested = tradeRequest[r] || 0;
-                        const canAdd = totalRequestAmount < totalOfferCredits;
-                        return (
-                          <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                            <button
-                              onClick={() => {
-                                if (!isHumanTurn || mustMoveRobber) return;
-                                if (canAdd) setTradeRequest(prev => ({ ...prev, [r]: requested + 1 }));
-                              }}
-                              disabled={!isHumanTurn || mustMoveRobber}
-                              style={{
-                                padding: '4px 7px', fontSize: '0.8rem', border: requested > 0 ? '2px solid #27ae60' : '2px solid transparent',
-                                borderRadius: '5px', background: requested > 0 ? '#0e4d28' : canAdd ? '#2c3e50' : '#1a1a2e',
-                                color: '#fff', cursor: canAdd ? 'pointer' : 'default', minWidth: '44px',
-                              }}
-                            >
-                              {HEX_ICON[r]}{requested > 0 ? ` ×${requested}` : ''}
-                            </button>
-                            {requested > 0 && (
-                              <button
-                                onClick={() => setTradeRequest(prev => ({ ...prev, [r]: requested - 1 }))}
-                                style={{ fontSize: '0.7rem', padding: '1px 8px', background: '#555', border: 'none', borderRadius: '3px', color: '#fff', cursor: 'pointer' }}
-                              >
-                                −
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                {/* Get row — always visible; buttons gray out until you have credits */}
+                <div style={{ marginBottom: '8px' }}>
+                  <div style={{ fontSize: '0.8rem', color: '#bbb', marginBottom: '4px' }}>
+                    Get (tap to add):{totalOfferCredits === 0 && <span style={{ color: '#666', marginLeft: '6px' }}>offer resources above first</span>}
                   </div>
-                )}
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {RESOURCES.map(r => {
+                      const requested = tradeRequest[r] || 0;
+                      const canAdd = totalRequestAmount < totalOfferCredits;
+                      return (
+                        <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                          <button
+                            onClick={() => {
+                              if (!isHumanTurn || mustMoveRobber || !canAdd) return;
+                              setTradeRequest(prev => ({ ...prev, [r]: requested + 1 }));
+                            }}
+                            disabled={!isHumanTurn || mustMoveRobber}
+                            style={{
+                              padding: '4px 7px', fontSize: '0.8rem', border: requested > 0 ? '2px solid #27ae60' : '2px solid transparent',
+                              borderRadius: '5px',
+                              background: requested > 0 ? '#0e4d28' : totalOfferCredits > 0 && canAdd ? '#2c3e50' : '#1a1a2e',
+                              color: totalOfferCredits > 0 || requested > 0 ? '#fff' : '#555',
+                              cursor: canAdd && totalOfferCredits > 0 ? 'pointer' : 'default', minWidth: '44px',
+                              opacity: totalOfferCredits > 0 ? 1 : 0.4,
+                            }}
+                          >
+                            {HEX_ICON[r]}{requested > 0 ? ` ×${requested}` : ''}
+                          </button>
+                          {requested > 0 && (
+                            <button
+                              onClick={() => setTradeRequest(prev => ({ ...prev, [r]: requested - 1 }))}
+                              style={{ fontSize: '0.7rem', padding: '1px 8px', background: '#555', border: 'none', borderRadius: '3px', color: '#fff', cursor: 'pointer' }}
+                            >
+                              −
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 {/* Execute + clear */}
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
