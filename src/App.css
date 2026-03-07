@@ -210,6 +210,24 @@ body {
   margin-bottom: 20px;
 }
 
+.btn.cannot-afford {
+  opacity: 0.6;
+  background: linear-gradient(180deg, #555 0%, #444 100%);
+  color: #aaa;
+}
+
+.trade-section {
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 15px;
+}
+
+.trade-section h4 {
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+}
+
 .costs {
   background: rgba(0,0,0,0.2);
   border-radius: 8px;

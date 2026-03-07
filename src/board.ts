@@ -43,17 +43,22 @@ const HEX_COORDS: { q: number; r: number }[] = [
   { q: 2, r: -2 }, { q: 2, r: -1 }, { q: 2, r: 0 },
 ];
 
-// Standard 9 Catan ports (5 resource + 4 generic)
+// Standard 9 Catan ports (5 resource-specific 2:1 + 4 generic 3:1).
+// Each port is placed on an OUTER edge of a border hex (the neighbor in that
+// direction does not exist in the board).
+// Edge→neighbor direction mapping for flat-top axial coords:
+//   edge 0 → (+1, 0)   edge 1 → (0, +1)   edge 2 → (-1, +1)
+//   edge 3 → (-1, 0)   edge 4 → (0, -1)   edge 5 → (+1, -1)
 const PORTS: { q: number; r: number; edge: number; resource: Resource | 'generic' }[] = [
-  { q: -2, r: 0, edge: 4, resource: 'ore' },
-  { q: -2, r: 1, edge: 5, resource: 'generic' },
-  { q: -1, r: -1, edge: 0, resource: 'wood' },
-  { q: 0, r: -2, edge: 1, resource: 'generic' },
-  { q: 1, r: -2, edge: 2, resource: 'brick' },
-  { q: 2, r: -2, edge: 2, resource: 'generic' },
-  { q: 2, r: 0, edge: 3, resource: 'sheep' },
-  { q: 1, r: 1, edge: 4, resource: 'wheat' },
-  { q: -1, r: 2, edge: 0, resource: 'generic' },
+  { q:  0, r: -2, edge: 4, resource: 'generic' }, // top
+  { q:  1, r: -2, edge: 5, resource: 'ore'     }, // upper-right
+  { q:  2, r: -2, edge: 0, resource: 'generic' }, // right-upper
+  { q:  2, r:  0, edge: 0, resource: 'wheat'   }, // right
+  { q:  1, r:  1, edge: 1, resource: 'sheep'   }, // lower-right
+  { q:  0, r:  2, edge: 1, resource: 'generic' }, // bottom
+  { q: -1, r:  2, edge: 2, resource: 'brick'   }, // lower-left
+  { q: -2, r:  1, edge: 3, resource: 'generic' }, // left
+  { q: -2, r:  0, edge: 4, resource: 'wood'    }, // upper-left
 ];
 
 // Get pixel center of a hex
