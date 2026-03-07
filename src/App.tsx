@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import type { GameState, Hex, Resource, Vertex, Edge, Port } from './types';
+import type { GameState, Hex, Resource, Vertex, Edge, Port, Player } from './types';
 import {
   createInitialGameState, rollDice, distributeResources,
   calculateVP, addLog, advanceSetupState, canAfford, BUILD_COSTS,
+  getTotalResources, discardHalf,
 } from './gameState';
+import { aiBestSetupSettlement, aiBestSetupRoad, aiDoFullTurn } from './ai';
 import { HEX_SIZE, hexCenterPx } from './board';
 import './App.css';
 
@@ -186,6 +188,10 @@ function App() {
 
   const tradeRatios = isHumanTurn ? getTradeRatios(game, game.currentPlayer) : {};
 
+  // Robber state: human moves robber after rolling 7
+  const [robbingMode, setRobbingMode] = useState(false);
+  const [stealCandidates, setStealCandidates] = useState<Player[]>([]);
+
   // Clear build error after 3 seconds
   useEffect(() => {
     if (!buildError) return;
@@ -193,21 +199,59 @@ function App() {
     return () => clearTimeout(t);
   }, [buildError]);
 
-  // ── AI auto-placement during setup ──────────────────────────────────────────
+  // ── AI auto-placement during setup (smart: score by probability) ────────────
   useEffect(() => {
     if (!isSetup || isHumanTurn) return;
     const timeout = setTimeout(() => {
       if (game.setupStep === 'settlement') {
-        const valid = getValidSettlementVertices(game);
-        if (valid.length > 0) doPlaceSettlement(game, valid[Math.floor(Math.random() * valid.length)].id);
+        const vertexId = aiBestSetupSettlement(game);
+        if (vertexId) doPlaceSettlement(game, vertexId);
       } else {
-        const valid = getValidRoadEdgesSetup(game);
-        if (valid.length > 0) doPlaceRoad(game, valid[Math.floor(Math.random() * valid.length)].id);
+        const edgeId = aiBestSetupRoad(game);
+        if (edgeId) doPlaceRoad(game, edgeId);
       }
     }, 700);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.currentPlayer, game.phase, game.setupStep]);
+
+  // ── AI playing turn — Step 1: roll dice ─────────────────────────────────────
+  useEffect(() => {
+    if (game.phase !== 'playing' || game.players[game.currentPlayer]?.isHuman || game.dice !== null) return;
+    const t = setTimeout(() => {
+      setGame(prev => {
+        if (prev.phase !== 'playing' || prev.players[prev.currentPlayer].isHuman || prev.dice !== null) return prev;
+        const dice = rollDice();
+        const sum = dice[0] + dice[1];
+        const newGame = { ...prev, dice };
+        if (sum !== 7) {
+          distributeResources(newGame, sum);
+        } else {
+          // Discard half for anyone with 8+ cards
+          for (const p of newGame.players) {
+            if (getTotalResources(p) >= 8) discardHalf(newGame, p.id);
+          }
+        }
+        addLog(newGame, `${prev.players[prev.currentPlayer].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
+        return newGame;
+      });
+    }, 600);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.currentPlayer, game.phase, game.dice]);
+
+  // ── AI playing turn — Step 2: build decisions + end turn ────────────────────
+  useEffect(() => {
+    if (game.phase !== 'playing' || game.players[game.currentPlayer]?.isHuman || game.dice === null) return;
+    const t = setTimeout(() => {
+      setGame(prev => {
+        if (prev.phase !== 'playing' || prev.players[prev.currentPlayer].isHuman || prev.dice === null) return prev;
+        return aiDoFullTurn(prev);
+      });
+    }, 1100);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.dice, game.currentPlayer, game.phase]);
 
   // ── Core placement ────────────────────────────────────────────────────────
 
@@ -322,10 +366,18 @@ function App() {
     const sum = dice[0] + dice[1];
     setGame(prev => {
       const newGame = { ...prev, dice };
-      distributeResources(newGame, sum);
+      if (sum !== 7) {
+        distributeResources(newGame, sum);
+      } else {
+        // Auto-discard half for anyone (human included) with 8+ cards
+        for (const p of newGame.players) {
+          if (getTotalResources(p) >= 8) discardHalf(newGame, p.id);
+        }
+      }
       addLog(newGame, `Rolled ${dice[0]} + ${dice[1]} = ${sum}`);
       return newGame;
     });
+    if (sum === 7) setRobbingMode(true);
   };
 
   const handleEndTurn = () => {
@@ -376,6 +428,94 @@ function App() {
       return newGame;
     });
     setTradeGive(null); setTradeGet(null);
+  };
+
+  const handleMoveRobber = (hexId: string) => {
+    setRobbingMode(false);
+    const hex = game.board.hexes.find(h => h.id === hexId)!;
+    const { cx, cy } = hexCenterPx(hex.q, hex.r);
+    // Find adjacent opponents who have resources to steal
+    const adjacent = game.players.filter(p => {
+      if (p.id === game.currentPlayer) return false;
+      if (getTotalResources(p) === 0) return false;
+      return game.board.vertices.some(v => {
+        if (!v.settlements[p.id.toString()]) return false;
+        const dx = v.x - cx, dy = v.y - cy;
+        return Math.sqrt(dx * dx + dy * dy) <= HEX_SIZE + 2;
+      });
+    });
+    setGame(prev => {
+      const newGame = {
+        ...prev,
+        board: {
+          ...prev.board,
+          hexes: prev.board.hexes.map(h => ({ ...h, hasRobber: h.id === hexId })),
+        },
+        selectedHexForRobber: hex,
+      };
+      addLog(newGame, `${prev.players[prev.currentPlayer].name} moved the robber`);
+      return newGame;
+    });
+    if (adjacent.length === 0) return;
+    if (adjacent.length === 1) {
+      handleSteal(adjacent[0].id);
+    } else {
+      setStealCandidates(adjacent);
+    }
+  };
+
+  const handleSteal = (fromPlayerId: number) => {
+    setStealCandidates([]);
+    setGame(prev => {
+      const fromPlayer = prev.players[fromPlayerId];
+      const toPlayer = prev.players[prev.currentPlayer];
+      const resources = (['wood', 'brick', 'sheep', 'wheat', 'ore'] as Resource[]).filter(
+        r => (fromPlayer.resources[r] || 0) > 0
+      );
+      if (resources.length === 0) return prev;
+      const res = resources[Math.floor(Math.random() * resources.length)];
+      const newGame = {
+        ...prev,
+        players: prev.players.map(p => {
+          if (p.id === fromPlayerId) return { ...p, resources: { ...p.resources, [res]: (p.resources[res] || 0) - 1 } };
+          if (p.id === prev.currentPlayer) return { ...p, resources: { ...p.resources, [res]: (p.resources[res] || 0) + 1 } };
+          return p;
+        }),
+      };
+      addLog(newGame, `${toPlayer.name} stole a resource from ${fromPlayer.name}`);
+      return newGame;
+    });
+  };
+
+  const handleUpgradeCity = (vertexId: string) => {
+    if (!canBuildCity) { setBuildError('Not enough resources! Need 2🌾3⛏️'); return; }
+    const player = currentPlayer;
+    setGame(prev => {
+      const newGame = {
+        ...prev,
+        board: {
+          ...prev.board,
+          vertices: prev.board.vertices.map(v =>
+            v.id !== vertexId ? v
+              : { ...v, settlements: { ...v.settlements, [player.id]: 'city' as const } }
+          ),
+        },
+        players: prev.players.map(p =>
+          p.id !== player.id ? p : {
+            ...p,
+            resources: {
+              ...p.resources,
+              wheat: (p.resources.wheat || 0) - 2,
+              ore: (p.resources.ore || 0) - 3,
+            },
+            pieces: { ...p.pieces, cities: p.pieces.cities - 1, settlements: p.pieces.settlements + 1 },
+          }
+        ),
+      };
+      addLog(newGame, `${player.name} upgraded to a city`);
+      return newGame;
+    });
+    setBuildingMode(null);
   };
 
   // ── Rendering ────────────────────────────────────────────────────────────────
@@ -530,7 +670,37 @@ function App() {
           onClick={ev => { ev.stopPropagation(); handlePlaceRoadPlaying(e.id); }} />
       ));
     }
+    if (buildingMode === 'city') {
+      const cityTargets = game.board.vertices.filter(
+        v => v.settlements[game.currentPlayer.toString()] === 'settlement'
+      );
+      return cityTargets.map(v => (
+        <circle key={`spot-${v.id}`} cx={v.x} cy={v.y} r={16}
+          fill="rgba(255,215,0,0.35)" stroke="#f39c12" strokeWidth="3" style={{ cursor: 'pointer' }}
+          onClick={e => { e.stopPropagation(); handleUpgradeCity(v.id); }} />
+      ));
+    }
     return null;
+  };
+
+  const renderRobberTargets = () => {
+    if (!robbingMode || !isHumanTurn) return null;
+    return game.board.hexes
+      .filter(h => !h.hasRobber)
+      .map(hex => {
+        const pts: string[] = [];
+        const { cx, cy } = hexCenterPx(hex.q, hex.r);
+        for (let i = 0; i < 6; i++) {
+          const a = (i * Math.PI) / 3;
+          pts.push(`${cx + HEX_SIZE * Math.cos(a)},${cy + HEX_SIZE * Math.sin(a)}`);
+        }
+        return (
+          <polygon key={`robber-${hex.id}`} points={pts.join(' ')}
+            fill="rgba(180,0,0,0.22)" stroke="#e74c3c" strokeWidth="2"
+            style={{ cursor: 'pointer' }}
+            onClick={e => { e.stopPropagation(); handleMoveRobber(hex.id); }} />
+        );
+      });
   };
 
   const getDisplayVP = (p: typeof currentPlayer) => calculateVP(p, game);
@@ -582,6 +752,7 @@ function App() {
             {renderRoads()}
             {renderSettlements()}
             {renderBuildableSpots()}
+            {renderRobberTargets()}
           </svg>
         </div>
 
@@ -623,6 +794,32 @@ function App() {
           ) : (
             <>
               <h3>Actions</h3>
+
+              {/* Robber prompt */}
+              {robbingMode && isHumanTurn && (
+                <div style={{ padding: '12px', background: '#7b1a1a', borderRadius: '8px', marginBottom: '10px', textAlign: 'center' }}>
+                  <strong>☠️ You rolled 7! Click any hex to move the robber.</strong>
+                </div>
+              )}
+
+              {/* Steal selection */}
+              {stealCandidates.length > 0 && (
+                <div style={{ padding: '12px', background: '#2c3e50', borderRadius: '8px', marginBottom: '10px' }}>
+                  <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>🗡️ Steal from:</div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {stealCandidates.map(p => (
+                      <button key={p.id} onClick={() => handleSteal(p.id)}
+                        style={{ padding: '6px 14px', background: p.color, border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', color: '#000' }}>
+                        {p.name} ({getTotalResources(p)} cards)
+                      </button>
+                    ))}
+                    <button onClick={() => setStealCandidates([])}
+                      style={{ padding: '6px 10px', background: '#555', border: 'none', borderRadius: '6px', cursor: 'pointer', color: '#fff' }}>
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Dice */}
               <div className="dice-section">
@@ -759,6 +956,24 @@ function App() {
           ))}
         </div>
       </div>
+
+      {/* Game Over overlay */}
+      {game.winner !== null && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#1a2a3a', padding: '48px', borderRadius: '18px', textAlign: 'center', border: `3px solid ${game.players[game.winner].color}` }}>
+            <div style={{ fontSize: '3rem', marginBottom: '8px' }}>🏆</div>
+            <h2 style={{ fontSize: '2rem', color: game.players[game.winner].color, marginBottom: '8px' }}>
+              {game.players[game.winner].name} wins!
+            </h2>
+            <p style={{ color: '#aaa', marginBottom: '24px' }}>
+              {calculateVP(game.players[game.winner], game)} victory points
+            </p>
+            <button className="btn btn-primary" onClick={handleNewGame}>
+              🎲 New Game
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
