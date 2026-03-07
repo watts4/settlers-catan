@@ -56,6 +56,8 @@ export function createInitialGameState(): GameState {
     log: [],
     setupRound: 1,
     playersFinishedSetup: [],
+    setupStep: 'settlement',
+    setupLastSettlementVertexId: null,
     playersToDiscard: [],
     selectedHexForRobber: null,
     stealFromPlayer: null,
@@ -542,6 +544,33 @@ export function addLog(state: GameState, action: string): void {
     action,
     timestamp: Date.now(),
   });
+}
+
+// Advance snake-draft setup to next player / phase.
+// Call this after a player finishes placing their road during setup.
+export function advanceSetupState(state: GameState): void {
+  if (state.phase === 'setup1') {
+    if (state.currentPlayer < 3) {
+      // Next player clockwise
+      state.currentPlayer++;
+    } else {
+      // Player 3 finished setup1 → setup2 starts, player 3 goes first (same player)
+      state.phase = 'setup2';
+      // currentPlayer stays at 3
+    }
+  } else if (state.phase === 'setup2') {
+    if (state.currentPlayer > 0) {
+      // Next player counter-clockwise
+      state.currentPlayer--;
+    } else {
+      // Player 0 finished setup2 → game begins
+      state.phase = 'playing';
+      state.currentPlayer = 0;
+      state.turn = 1;
+    }
+  }
+  state.setupStep = 'settlement';
+  state.setupLastSettlementVertexId = null;
 }
 
 // Setup phase helpers

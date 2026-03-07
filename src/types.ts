@@ -95,6 +95,9 @@ export interface GameState {
   log: GameLogEntry[];
   setupRound: number;
   playersFinishedSetup: number[];
+  // Setup phase tracking
+  setupStep: 'settlement' | 'road'; // what the current player must place next during setup
+  setupLastSettlementVertexId: string | null; // road must touch this vertex during setup
   playersToDiscard: number[];
   selectedHexForRobber: Hex | null;
   stealFromPlayer: number | null;

@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { GameState, Hex, Resource, Vertex, Edge } from './types';
-import { createInitialGameState, rollDice, distributeResources, calculateVP, addLog } from './gameState';
-import { HEX_SIZE } from './board';
+import {
+  createInitialGameState, rollDice, distributeResources,
+  calculateVP, addLog, advanceSetupState,
+} from './gameState';
+import { HEX_SIZE, hexCenterPx } from './board';
 import './App.css';
 
-// ── Placement validity helpers ────────────────────────────────────────────────
+// ── Geometry helpers ──────────────────────────────────────────────────────────
 
 function distSq(ax: number, ay: number, bx: number, by: number) {
   return (ax - bx) ** 2 + (ay - by) ** 2;
@@ -20,17 +23,19 @@ function edgesShareEndpoint(e1: Edge, e2: Edge): boolean {
   );
 }
 
+// ── Valid placement helpers ───────────────────────────────────────────────────
+
+/** All vertices a settlement can be placed on (distance rule enforced). */
 function getValidSettlementVertices(game: GameState): Vertex[] {
   const playerId = game.currentPlayer.toString();
   return game.board.vertices.filter(v => {
-    // Must be unoccupied
     if (Object.values(v.settlements).some(s => s)) return false;
-    // Distance rule: no adjacent settled vertices
+    // Distance rule: no adjacent settled vertex
     for (const other of game.board.vertices) {
       if (!Object.values(other.settlements).some(s => s)) continue;
       if (distSq(v.x, v.y, other.x, other.y) < (HEX_SIZE * 1.1) ** 2) return false;
     }
-    // In playing phase also require a connected road
+    // In playing phase also require own connected road
     if (game.phase === 'playing') {
       const hasRoad = game.board.edges.some(e => {
         if (!e.roads[playerId]) return false;
@@ -42,12 +47,24 @@ function getValidSettlementVertices(game: GameState): Vertex[] {
   });
 }
 
+/** During setup: road must touch the settlement just placed. */
+function getValidRoadEdgesSetup(game: GameState): Edge[] {
+  const lastId = game.setupLastSettlementVertexId;
+  if (!lastId) return [];
+  const vertex = game.board.vertices.find(v => v.id === lastId);
+  if (!vertex) return [];
+  return game.board.edges.filter(e => {
+    if (Object.values(e.roads).some(r => r)) return false;
+    return distSq(vertex.x, vertex.y, e.x1, e.y1) < 9 ||
+           distSq(vertex.x, vertex.y, e.x2, e.y2) < 9;
+  });
+}
+
+/** During playing phase: road must connect to own road or settlement. */
 function getValidRoadEdges(game: GameState): Edge[] {
   const playerId = game.currentPlayer.toString();
   return game.board.edges.filter(e => {
-    // Must be unoccupied
     if (Object.values(e.roads).some(r => r)) return false;
-    // Must connect to own settlement or own road
     const endpoints = game.board.vertices.filter(
       v => distSq(v.x, v.y, e.x1, e.y1) < 9 || distSq(v.x, v.y, e.x2, e.y2) < 9
     );
@@ -62,6 +79,51 @@ function getValidRoadEdges(game: GameState): Edge[] {
   });
 }
 
+/** Resources from hexes adjacent to a vertex (for setup2 income). */
+function getAdjacentResources(game: GameState, vertexId: string): Resource[] {
+  const vertex = game.board.vertices.find(v => v.id === vertexId);
+  if (!vertex) return [];
+  return game.board.hexes
+    .filter(hex => {
+      if (hex.resource === 'desert') return false;
+      const { cx, cy } = hexCenterPx(hex.q, hex.r);
+      return Math.sqrt(distSq(vertex.x, vertex.y, cx, cy)) <= HEX_SIZE + 2;
+    })
+    .map(hex => hex.resource as Resource);
+}
+
+// ── Resource display config ───────────────────────────────────────────────────
+
+const HEX_ICON: Record<Resource, string> = {
+  wood:   '🌲',
+  brick:  '🧱',
+  sheep:  '🐑',
+  wheat:  '🌾',
+  ore:    '⛏️',
+  desert: '☀️',
+  gold:   '💰',
+};
+
+const HEX_LABEL: Record<Resource, string> = {
+  wood:   'Forest',
+  brick:  'Hills',
+  sheep:  'Pasture',
+  wheat:  'Fields',
+  ore:    'Mountains',
+  desert: 'Desert',
+  gold:   'Gold',
+};
+
+const HEX_COLOR: Record<Resource, string> = {
+  wood:   '#2d5a27',
+  brick:  '#8b4513',
+  sheep:  '#7ec850',
+  wheat:  '#daa520',
+  ore:    '#708090',
+  desert: '#d2b48c',
+  gold:   '#ffd700',
+};
+
 // ── App ───────────────────────────────────────────────────────────────────────
 
 function App() {
@@ -69,9 +131,156 @@ function App() {
   const [buildingMode, setBuildingMode] = useState<'road' | 'settlement' | 'city' | null>(null);
 
   const currentPlayer = game.players[game.currentPlayer];
+  const isSetup = game.phase === 'setup1' || game.phase === 'setup2';
   const isHumanTurn = currentPlayer?.isHuman;
 
-  // ── Actions ─────────────────────────────────────────────────────────────────
+  // ── AI auto-placement during setup ──────────────────────────────────────────
+  useEffect(() => {
+    if (!isSetup) return;
+    if (isHumanTurn) return;
+
+    const timeout = setTimeout(() => {
+      if (game.setupStep === 'settlement') {
+        const valid = getValidSettlementVertices(game);
+        if (valid.length > 0) {
+          const v = valid[Math.floor(Math.random() * valid.length)];
+          doPlaceSettlement(game, v.id);
+        }
+      } else {
+        const valid = getValidRoadEdgesSetup(game);
+        if (valid.length > 0) {
+          const e = valid[Math.floor(Math.random() * valid.length)];
+          doPlaceRoad(game, e.id);
+        }
+      }
+    }, 700);
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.currentPlayer, game.phase, game.setupStep]);
+
+  // ── Core placement logic (called by both human clicks and AI) ────────────────
+
+  function doPlaceSettlement(prev: GameState, vertexId: string) {
+    const player = prev.players[prev.currentPlayer];
+
+    setGame(state => {
+      const newGame: GameState = {
+        ...state,
+        board: {
+          ...state.board,
+          vertices: state.board.vertices.map(v =>
+            v.id !== vertexId ? v
+              : { ...v, settlements: { ...v.settlements, [player.id]: 'settlement' as const } }
+          ),
+        },
+        players: state.players.map(p =>
+          p.id !== player.id ? p
+            : { ...p, pieces: { ...p.pieces, settlements: p.pieces.settlements - 1 } }
+        ),
+        setupStep: 'road',
+        setupLastSettlementVertexId: vertexId,
+      };
+
+      // Give resources immediately after placing 2nd settlement (setup2)
+      if (state.phase === 'setup2') {
+        const resources = getAdjacentResources(state, vertexId);
+        const resMap: Partial<Record<Resource, number>> = { ...newGame.players[player.id].resources };
+        for (const r of resources) resMap[r] = (resMap[r] || 0) + 1;
+        newGame.players = newGame.players.map(p =>
+          p.id !== player.id ? p : { ...p, resources: resMap }
+        );
+        addLog(newGame, `${player.name} placed settlement & received: ${resources.join(', ') || 'nothing'}`);
+      } else {
+        addLog(newGame, `${player.name} placed a settlement`);
+      }
+
+      return newGame;
+    });
+
+    setBuildingMode(null);
+  }
+
+  function doPlaceRoad(prev: GameState, edgeId: string) {
+    const player = prev.players[prev.currentPlayer];
+
+    setGame(state => {
+      const newGame: GameState = {
+        ...state,
+        board: {
+          ...state.board,
+          edges: state.board.edges.map(e =>
+            e.id !== edgeId ? e
+              : { ...e, roads: { ...e.roads, [player.id]: 'road' as const } }
+          ),
+        },
+        players: state.players.map(p =>
+          p.id !== player.id ? p
+            : { ...p, pieces: { ...p.pieces, roads: p.pieces.roads - 1 } }
+        ),
+      };
+
+      if (state.phase === 'setup1' || state.phase === 'setup2') {
+        advanceSetupState(newGame);
+      } else {
+        // Deduct resources in playing phase
+        newGame.players = newGame.players.map(p =>
+          p.id !== player.id ? p : {
+            ...p,
+            resources: {
+              ...p.resources,
+              wood: (p.resources.wood || 0) - 1,
+              brick: (p.resources.brick || 0) - 1,
+            },
+            pieces: { ...p.pieces, roads: p.pieces.roads - 1 },
+          }
+        );
+      }
+
+      addLog(newGame, `${player.name} placed a road`);
+      return newGame;
+    });
+
+    setBuildingMode(null);
+  }
+
+  // ── Human action handlers ────────────────────────────────────────────────────
+
+  const handlePlaceSettlement = (vertexId: string) => doPlaceSettlement(game, vertexId);
+  const handlePlaceRoad = (edgeId: string) => doPlaceRoad(game, edgeId);
+
+  const handlePlaceSettlementPlaying = (vertexId: string) => {
+    const player = currentPlayer;
+    if (!player) return;
+    setGame(prev => {
+      const newGame: GameState = {
+        ...prev,
+        board: {
+          ...prev.board,
+          vertices: prev.board.vertices.map(v =>
+            v.id !== vertexId ? v
+              : { ...v, settlements: { ...v.settlements, [player.id]: 'settlement' as const } }
+          ),
+        },
+        players: prev.players.map(p =>
+          p.id !== player.id ? p : {
+            ...p,
+            resources: {
+              ...p.resources,
+              wood: (p.resources.wood || 0) - 1,
+              brick: (p.resources.brick || 0) - 1,
+              wheat: (p.resources.wheat || 0) - 1,
+              sheep: (p.resources.sheep || 0) - 1,
+            },
+            pieces: { ...p.pieces, settlements: p.pieces.settlements - 1 },
+          }
+        ),
+      };
+      addLog(newGame, `${player.name} built a settlement`);
+      return newGame;
+    });
+    setBuildingMode(null);
+  };
 
   const handleRollDice = () => {
     const dice = rollDice();
@@ -88,12 +297,7 @@ function App() {
     setBuildingMode(null);
     setGame(prev => {
       const nextPlayer = (prev.currentPlayer + 1) % 4;
-      return {
-        ...prev,
-        currentPlayer: nextPlayer,
-        turn: nextPlayer === 0 ? prev.turn + 1 : prev.turn,
-        dice: null,
-      };
+      return { ...prev, currentPlayer: nextPlayer, turn: prev.turn + 1, dice: null };
     });
   };
 
@@ -106,212 +310,145 @@ function App() {
     setBuildingMode(prev => prev === type ? null : type);
   };
 
-  // ── Place settlement on a specific vertex ────────────────────────────────────
-
-  const handlePlaceSettlement = (vertexId: string) => {
-    const player = currentPlayer;
-    if (!player) return;
-
-    setGame(prev => {
-      const newGame = { ...prev };
-      newGame.board = { ...prev.board, vertices: prev.board.vertices.map(v => {
-        if (v.id !== vertexId) return v;
-        return { ...v, settlements: { ...v.settlements, [player.id]: 'settlement' } };
-      })};
-
-      // Deduct resources only in playing phase
-      if (prev.phase === 'playing') {
-        newGame.players = prev.players.map(p => p.id !== player.id ? p : {
-          ...p,
-          resources: {
-            ...p.resources,
-            wood: (p.resources.wood || 0) - 1,
-            brick: (p.resources.brick || 0) - 1,
-            wheat: (p.resources.wheat || 0) - 1,
-            sheep: (p.resources.sheep || 0) - 1,
-          },
-          pieces: { ...p.pieces, settlements: p.pieces.settlements - 1 },
-        });
-      }
-
-      addLog(newGame, `${player.name} built a settlement`);
-      return newGame;
-    });
-
-    setBuildingMode(null);
-  };
-
-  // ── Place road on a specific edge ────────────────────────────────────────────
-
-  const handlePlaceRoad = (edgeId: string) => {
-    const player = currentPlayer;
-    if (!player) return;
-
-    setGame(prev => {
-      const newGame = { ...prev };
-      newGame.board = { ...prev.board, edges: prev.board.edges.map(e => {
-        if (e.id !== edgeId) return e;
-        return { ...e, roads: { ...e.roads, [player.id]: 'road' } };
-      })};
-
-      if (prev.phase === 'playing') {
-        newGame.players = prev.players.map(p => p.id !== player.id ? p : {
-          ...p,
-          resources: {
-            ...p.resources,
-            wood: (p.resources.wood || 0) - 1,
-            brick: (p.resources.brick || 0) - 1,
-          },
-          pieces: { ...p.pieces, roads: p.pieces.roads - 1 },
-        });
-      }
-
-      addLog(newGame, `${player.name} built a road`);
-      return newGame;
-    });
-
-    setBuildingMode(null);
-  };
-
-  // ── Rendering helpers ────────────────────────────────────────────────────────
-
-  const getHexColor = (resource: Resource): string => {
-    const colors: Record<Resource, string> = {
-      wood: '#2d5a27',
-      brick: '#8b4513',
-      sheep: '#7ec850',
-      wheat: '#daa520',
-      ore: '#708090',
-      desert: '#d2b48c',
-      gold: '#ffd700',
-    };
-    return colors[resource];
-  };
+  // ── Rendering ────────────────────────────────────────────────────────────────
 
   const getNumberColor = (num: number | null): string => {
     if (!num) return '#666';
     return num === 6 || num === 8 ? '#c0392b' : '#2c3e50';
   };
 
-  // ── Render hex tile ──────────────────────────────────────────────────────────
-
   const renderHex = (hex: Hex) => {
     const cx = HEX_SIZE * 1.5 * hex.q;
     const cy = HEX_SIZE * (Math.sqrt(3) / 2 * hex.q + Math.sqrt(3) * hex.r);
 
-    const points: string[] = [];
+    const pts: string[] = [];
     for (let i = 0; i < 6; i++) {
-      const angle = (i * Math.PI) / 3;
-      points.push(`${cx + HEX_SIZE * Math.cos(angle)},${cy + HEX_SIZE * Math.sin(angle)}`);
+      const a = (i * Math.PI) / 3;
+      pts.push(`${cx + HEX_SIZE * Math.cos(a)},${cy + HEX_SIZE * Math.sin(a)}`);
     }
 
     return (
       <g key={hex.id}>
         <polygon
-          points={points.join(' ')}
-          fill={getHexColor(hex.resource)}
+          points={pts.join(' ')}
+          fill={HEX_COLOR[hex.resource]}
           stroke="#5a3010"
           strokeWidth="3"
           className="hex"
         />
+        {/* Resource icon */}
+        <text x={cx} y={cy - (hex.number ? 22 : 8)} textAnchor="middle" fontSize="22" style={{ userSelect: 'none' }}>
+          {HEX_ICON[hex.resource]}
+        </text>
+        {/* Resource label (small, under icon) */}
+        <text x={cx} y={cy - (hex.number ? 6 : 10)} textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.75)" fontWeight="bold" style={{ userSelect: 'none' }}>
+          {HEX_LABEL[hex.resource].toUpperCase()}
+        </text>
+        {/* Number token */}
         {hex.number && (
-          <circle cx={cx} cy={cy} r={18} fill={hex.hasRobber ? '#333' : '#fff'} />
+          <>
+            <circle cx={cx} cy={cy + 14} r={16} fill={hex.hasRobber ? '#333' : '#fff'} opacity={0.93} />
+            <text
+              x={cx} y={cy + 19}
+              textAnchor="middle"
+              fill={getNumberColor(hex.number)}
+              fontSize="14"
+              fontWeight="bold"
+              style={{ userSelect: 'none' }}
+            >
+              {hex.number}
+            </text>
+          </>
         )}
-        {hex.number && (
-          <text
-            x={cx} y={cy + 5}
-            textAnchor="middle"
-            fill={getNumberColor(hex.number)}
-            fontSize="15"
-            fontWeight="bold"
-          >
-            {hex.number}
-          </text>
-        )}
-        {hex.hasRobber && (
-          <text x={cx} y={cy - 26} textAnchor="middle" fontSize="20">☠️</text>
+        {hex.hasRobber && !hex.number && (
+          <text x={cx} y={cy + 8} textAnchor="middle" fontSize="18" style={{ userSelect: 'none' }}>☠️</text>
         )}
       </g>
     );
   };
 
-  // ── Render placed settlements / cities ───────────────────────────────────────
-
-  const renderSettlements = () => {
-    return game.board.vertices.flatMap(vertex =>
+  const renderSettlements = () =>
+    game.board.vertices.flatMap(vertex =>
       Object.entries(vertex.settlements)
-        .filter(([, type]) => type)
-        .map(([playerId, type]) => {
-          const player = game.players[parseInt(playerId)];
+        .filter(([, t]) => t)
+        .map(([pid, type]) => {
+          const p = game.players[parseInt(pid)];
           return (
             <circle
-              key={`${vertex.id}-${playerId}`}
-              cx={vertex.x}
-              cy={vertex.y}
+              key={`${vertex.id}-${pid}`}
+              cx={vertex.x} cy={vertex.y}
               r={type === 'city' ? 14 : 10}
-              fill={player.color}
-              stroke="#000"
-              strokeWidth="2"
+              fill={p.color} stroke="#000" strokeWidth="2"
             />
           );
         })
     );
-  };
 
-  // ── Render placed roads ──────────────────────────────────────────────────────
-
-  const renderRoads = () => {
-    return game.board.edges.flatMap(edge =>
+  const renderRoads = () =>
+    game.board.edges.flatMap(edge =>
       Object.entries(edge.roads)
-        .filter(([, type]) => type)
-        .map(([playerId]) => {
-          const player = game.players[parseInt(playerId)];
+        .filter(([, t]) => t)
+        .map(([pid]) => {
+          const p = game.players[parseInt(pid)];
           return (
             <line
-              key={`${edge.id}-${playerId}`}
-              x1={edge.x1} y1={edge.y1}
-              x2={edge.x2} y2={edge.y2}
-              stroke={player.color}
-              strokeWidth="8"
-              strokeLinecap="round"
+              key={`${edge.id}-${pid}`}
+              x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2}
+              stroke={p.color} strokeWidth="8" strokeLinecap="round"
             />
           );
         })
     );
-  };
-
-  // ── Render interactive placement spots ───────────────────────────────────────
 
   const renderBuildableSpots = () => {
-    if (!buildingMode || !isHumanTurn) return null;
+    // During setup: auto-show what must be placed (human turn only)
+    if (isSetup && isHumanTurn) {
+      if (game.setupStep === 'settlement') {
+        return getValidSettlementVertices(game).map(v => (
+          <circle
+            key={`spot-${v.id}`}
+            cx={v.x} cy={v.y} r={13}
+            fill="rgba(255,255,255,0.25)" stroke="#27ae60" strokeWidth="3"
+            style={{ cursor: 'pointer' }}
+            onClick={e => { e.stopPropagation(); handlePlaceSettlement(v.id); }}
+          />
+        ));
+      } else {
+        return getValidRoadEdgesSetup(game).map(e => (
+          <line
+            key={`spot-${e.id}`}
+            x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
+            stroke="rgba(255,255,255,0.55)" strokeWidth="10" strokeLinecap="round"
+            style={{ cursor: 'pointer' }}
+            onClick={ev => { ev.stopPropagation(); handlePlaceRoad(e.id); }}
+          />
+        ));
+      }
+    }
+
+    // Playing phase manual building mode
+    if (!buildingMode || !isHumanTurn || isSetup) return null;
 
     if (buildingMode === 'settlement') {
-      const valid = getValidSettlementVertices(game);
-      return valid.map(v => (
+      return getValidSettlementVertices(game).map(v => (
         <circle
           key={`spot-${v.id}`}
-          cx={v.x} cy={v.y}
-          r={13}
-          fill="rgba(255,255,255,0.25)"
-          stroke="#27ae60"
-          strokeWidth="3"
+          cx={v.x} cy={v.y} r={13}
+          fill="rgba(255,255,255,0.25)" stroke="#27ae60" strokeWidth="3"
           style={{ cursor: 'pointer' }}
-          onClick={e => { e.stopPropagation(); handlePlaceSettlement(v.id); }}
+          onClick={e => { e.stopPropagation(); handlePlaceSettlementPlaying(v.id); }}
         />
       ));
     }
 
     if (buildingMode === 'road') {
-      const valid = getValidRoadEdges(game);
-      return valid.map(e => (
+      return getValidRoadEdges(game).map(e => (
         <line
           key={`spot-${e.id}`}
           x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
-          stroke="rgba(255,255,255,0.55)"
-          strokeWidth="10"
-          strokeLinecap="round"
+          stroke="rgba(255,255,255,0.55)" strokeWidth="10" strokeLinecap="round"
           style={{ cursor: 'pointer' }}
-          onClick={evt => { evt.stopPropagation(); handlePlaceRoad(e.id); }}
+          onClick={ev => { ev.stopPropagation(); handlePlaceRoad(e.id); }}
         />
       ));
     }
@@ -321,19 +458,26 @@ function App() {
 
   const getDisplayVP = (player: typeof currentPlayer) => calculateVP(player, game);
 
+  // ── Setup order indicator ─────────────────────────────────────────────────
+  const setupOrder = game.phase === 'setup1'
+    ? [0, 1, 2, 3]
+    : game.phase === 'setup2'
+    ? [3, 2, 1, 0]
+    : [];
+
   // ── JSX ──────────────────────────────────────────────────────────────────────
 
   return (
     <div className="game">
-      {/* Header */}
       <header className="header">
         <h1>🎲 Settlers of Catan</h1>
         <button className="btn btn-secondary" onClick={handleNewGame} style={{ maxWidth: '120px', margin: '10px auto 0' }}>
           New Game
         </button>
         <div className="turn-info">
-          Turn {game.turn} | {currentPlayer?.name}'s Turn
-          {game.phase !== 'playing' && <span style={{ color: '#ffd700' }}> ({game.phase})</span>}
+          {isSetup
+            ? `Setup ${game.phase === 'setup1' ? '(Round 1 →)' : '(Round 2 ←)'} — ${currentPlayer?.name}`
+            : `Turn ${game.turn} | ${currentPlayer?.name}'s Turn`}
         </div>
       </header>
 
@@ -351,7 +495,9 @@ function App() {
               {Object.entries(player.resources)
                 .filter(([, count]) => (count ?? 0) > 0)
                 .map(([res, count]) => (
-                  <span key={res} className="resource">{res[0].toUpperCase()}: {count}</span>
+                  <span key={res} className="resource">
+                    {HEX_ICON[res as Resource]} {count}
+                  </span>
                 ))}
             </div>
           </div>
@@ -360,92 +506,107 @@ function App() {
 
       {/* Main Game Area */}
       <div className="game-area">
-        {/* Board — viewBox covers the full hex grid centered at (0,0) */}
         <div className="board-container">
           <svg
-            width="560"
-            height="560"
+            width="560" height="560"
             viewBox="-260 -270 520 540"
             className="board"
             onClick={() => buildingMode && setBuildingMode(null)}
           >
-            {/* Hexes */}
             {game.board.hexes.map(renderHex)}
-            {/* Placed roads */}
             {renderRoads()}
-            {/* Placed settlements / cities */}
             {renderSettlements()}
-            {/* Interactive placement spots (on top) */}
             {renderBuildableSpots()}
           </svg>
         </div>
 
         {/* Action Panel */}
         <div className="action-panel">
-          <h3>Actions</h3>
-
-          {/* Dice */}
-          <div className="dice-section">
-            {game.dice ? (
-              <div className="dice-result">
-                <span className="die">{game.dice[0]}</span>
-                <span className="die">{game.dice[1]}</span>
-                <span className="dice-sum">= {game.dice[0] + game.dice[1]}</span>
+          {isSetup ? (
+            /* ── Setup panel ── */
+            <>
+              <h3>🏗️ Setup Phase</h3>
+              <div style={{ background: '#1a2a3a', borderRadius: '8px', padding: '12px', marginBottom: '15px' }}>
+                <div style={{ marginBottom: '8px', fontSize: '0.9rem', color: '#aaa' }}>
+                  {game.phase === 'setup1' ? 'Round 1 — Clockwise ➜' : 'Round 2 — Counter-clockwise ←'}
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {setupOrder.map(pid => (
+                    <span
+                      key={pid}
+                      style={{
+                        padding: '4px 10px', borderRadius: '6px',
+                        background: pid === game.currentPlayer ? game.players[pid].color : 'rgba(255,255,255,0.1)',
+                        color: pid === game.currentPlayer ? '#000' : game.players[pid].color,
+                        fontWeight: pid === game.currentPlayer ? 'bold' : 'normal',
+                        border: `2px solid ${game.players[pid].color}`,
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      {game.players[pid].name}
+                    </span>
+                  ))}
+                </div>
               </div>
-            ) : (
-              <button className="btn btn-primary" onClick={handleRollDice} disabled={!isHumanTurn}>
-                🎲 Roll Dice
+
+              {isHumanTurn ? (
+                <div style={{ padding: '12px', background: '#27ae60', borderRadius: '8px', textAlign: 'center' }}>
+                  <strong>
+                    {game.setupStep === 'settlement'
+                      ? '🏠 Click a green spot to place your settlement'
+                      : '🛣️ Click a road spot adjacent to your settlement'}
+                  </strong>
+                </div>
+              ) : (
+                <div style={{ padding: '12px', background: '#2c3e50', borderRadius: '8px', textAlign: 'center', color: '#aaa' }}>
+                  ⏳ {currentPlayer?.name} is placing…
+                </div>
+              )}
+            </>
+          ) : (
+            /* ── Playing panel ── */
+            <>
+              <h3>Actions</h3>
+
+              <div className="dice-section">
+                {game.dice ? (
+                  <div className="dice-result">
+                    <span className="die">{game.dice[0]}</span>
+                    <span className="die">{game.dice[1]}</span>
+                    <span className="dice-sum">= {game.dice[0] + game.dice[1]}</span>
+                  </div>
+                ) : (
+                  <button className="btn btn-primary" onClick={handleRollDice} disabled={!isHumanTurn}>
+                    🎲 Roll Dice
+                  </button>
+                )}
+              </div>
+
+              {buildingMode && (
+                <div style={{ padding: '10px', background: '#27ae60', borderRadius: '8px', marginBottom: '15px', textAlign: 'center' }}>
+                  <strong>🏗️ Placing {buildingMode}!</strong>
+                  <br /><small>Click a highlighted spot — or click the board to cancel</small>
+                </div>
+              )}
+
+              <div className="build-section">
+                <h4>Build</h4>
+                <button className={`btn ${buildingMode === 'road' ? 'active' : ''}`} onClick={() => handleBuildToggle('road')} disabled={!isHumanTurn}>
+                  🛣️ Road (1🌲+1🧱)
+                </button>
+                <button className={`btn ${buildingMode === 'settlement' ? 'active' : ''}`} onClick={() => handleBuildToggle('settlement')} disabled={!isHumanTurn}>
+                  🏠 Settlement (1🌲+1🧱+1🌾+1🐑)
+                </button>
+                <button className={`btn ${buildingMode === 'city' ? 'active' : ''}`} onClick={() => handleBuildToggle('city')} disabled={!isHumanTurn}>
+                  🏰 City (2🌾+3⛏️)
+                </button>
+              </div>
+
+              <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isHumanTurn}>
+                ⏭️ End Turn
               </button>
-            )}
-          </div>
-
-          {/* Building mode indicator */}
-          {buildingMode && (
-            <div style={{ padding: '10px', background: '#27ae60', borderRadius: '8px', marginBottom: '15px', textAlign: 'center' }}>
-              <strong>🏗️ Placing {buildingMode}!</strong>
-              <br /><small>Click a highlighted spot on the board</small>
-              <br /><small style={{ opacity: 0.8 }}>(click elsewhere to cancel)</small>
-            </div>
+            </>
           )}
-
-          {/* Build buttons */}
-          <div className="build-section">
-            <h4>Build</h4>
-            <button
-              className={`btn ${buildingMode === 'road' ? 'active' : ''}`}
-              onClick={() => handleBuildToggle('road')}
-              disabled={!isHumanTurn}
-            >
-              🛣️ Road
-            </button>
-            <button
-              className={`btn ${buildingMode === 'settlement' ? 'active' : ''}`}
-              onClick={() => handleBuildToggle('settlement')}
-              disabled={!isHumanTurn}
-            >
-              🏠 Settlement
-            </button>
-            <button
-              className={`btn ${buildingMode === 'city' ? 'active' : ''}`}
-              onClick={() => handleBuildToggle('city')}
-              disabled={!isHumanTurn}
-            >
-              🏰 City
-            </button>
-          </div>
-
-          {/* End Turn */}
-          <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isHumanTurn}>
-            ⏭️ End Turn
-          </button>
-
-          {/* Cost Reference */}
-          <div className="costs">
-            <h4>Costs</h4>
-            <div>Road: 1 🪵 + 1 🧱</div>
-            <div>Settlement: 1 🪵 + 1 🧱 + 1 🌾 + 1 🐑</div>
-            <div>City: 2 🌾 + 3 ⛏️</div>
-          </div>
         </div>
       </div>
 
@@ -456,8 +617,8 @@ function App() {
           {game.log.slice(-10).map((entry, i) => (
             <div key={i} className="log-entry">
               <span className="log-turn">T{entry.turn}</span>
-              <span className="log-player" style={{ color: game.players[entry.player].color }}>
-                {game.players[entry.player].name}
+              <span className="log-player" style={{ color: game.players[entry.player]?.color }}>
+                {game.players[entry.player]?.name}
               </span>
               <span className="log-action">{entry.action}</span>
             </div>
