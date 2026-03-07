@@ -192,6 +192,9 @@ function App() {
   const [robbingMode, setRobbingMode] = useState(false);
   const [stealCandidates, setStealCandidates] = useState<Player[]>([]);
 
+  // True while the human must move the robber or choose who to steal from
+  const mustMoveRobber = robbingMode || stealCandidates.length > 0;
+
   // Clear build error after 3 seconds
   useEffect(() => {
     if (!buildError) return;
@@ -384,7 +387,12 @@ function App() {
       addLog(newGame, `Rolled ${dice[0]} + ${dice[1]} = ${sum}`);
       return newGame;
     });
-    if (sum === 7) setRobbingMode(true);
+    if (sum === 7) {
+      setBuildingMode(null);
+      setTradeGive(null);
+      setTradeGet(null);
+      setRobbingMode(true);
+    }
   };
 
   const handleEndTurn = () => {
@@ -863,20 +871,20 @@ function App() {
                 <h4>Build</h4>
                 <button
                   className={`btn ${buildingMode === 'road' ? 'active' : ''} ${!canBuildRoad ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('road')} disabled={!isHumanTurn}
+                  onClick={() => handleBuildToggle('road')} disabled={!isHumanTurn || mustMoveRobber}
                   title={!canBuildRoad ? 'Need 1🌲 1🧱' : ''}
                 >
                   🛣️ Road {!canBuildRoad && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌲1🧱)</span>}
                 </button>
                 <button
                   className={`btn ${buildingMode === 'settlement' ? 'active' : ''} ${!canBuildSettlement ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('settlement')} disabled={!isHumanTurn}
+                  onClick={() => handleBuildToggle('settlement')} disabled={!isHumanTurn || mustMoveRobber}
                 >
                   🏠 Settlement {!canBuildSettlement && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌲1🧱1🌾1🐑)</span>}
                 </button>
                 <button
                   className={`btn ${buildingMode === 'city' ? 'active' : ''} ${!canBuildCity ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('city')} disabled={!isHumanTurn}
+                  onClick={() => handleBuildToggle('city')} disabled={!isHumanTurn || mustMoveRobber}
                 >
                   🏰 City {!canBuildCity && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 2🌾3⛏️)</span>}
                 </button>
@@ -898,7 +906,7 @@ function App() {
                       return (
                         <button key={r}
                           onClick={() => { setTradeGive(r); setTradeGet(null); }}
-                          disabled={!isHumanTurn || !canGive}
+                          disabled={!isHumanTurn || !canGive || mustMoveRobber}
                           style={{
                             padding: '4px 7px', fontSize: '0.8rem', border: 'none', borderRadius: '5px',
                             background: tradeGive === r ? '#e67e22' : canGive ? '#2c3e50' : '#1a1a2e',
@@ -920,7 +928,7 @@ function App() {
                       {RESOURCES.filter(r => r !== tradeGive).map(r => (
                         <button key={r}
                           onClick={() => setTradeGet(r)}
-                          disabled={!isHumanTurn}
+                          disabled={!isHumanTurn || mustMoveRobber}
                           style={{
                             padding: '4px 7px', fontSize: '0.8rem', border: 'none', borderRadius: '5px',
                             background: tradeGet === r ? '#27ae60' : '#2c3e50',
@@ -940,7 +948,7 @@ function App() {
                 )}
               </div>
 
-              <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isHumanTurn} style={{ marginTop: '10px' }}>
+              <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isHumanTurn || mustMoveRobber} style={{ marginTop: '10px' }}>
                 ⏭️ End Turn
               </button>
             </>
