@@ -218,48 +218,35 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.currentPlayer, game.phase, game.setupStep]);
 
-  // ── AI playing turn — roll dice, then build + end turn ──────────────────────
+  // ── AI playing turn ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (game.phase !== 'playing' || game.players[game.currentPlayer]?.isHuman) return;
+    const aiPlayerId = game.currentPlayer;
+    if (game.phase !== 'playing' || game.players[aiPlayerId]?.isHuman) return;
 
-    let cancelled = false;
-    let t2: ReturnType<typeof setTimeout> | null = null;
-
-    const t1 = setTimeout(() => {
-      if (cancelled) return;
-
-      // Roll dice and distribute resources
-      const dice = rollDice();
-      const sum = dice[0] + dice[1];
+    const timer = setTimeout(() => {
       setGame(prev => {
-        if (prev.phase !== 'playing' || prev.players[prev.currentPlayer].isHuman) return prev;
-        const newGame = { ...prev, dice };
+        // Bail if the turn already moved on (e.g. another update raced in)
+        if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) return prev;
+
+        // Roll dice
+        const dice = rollDice();
+        const sum = dice[0] + dice[1];
+        const afterRoll: GameState = { ...prev, dice };
         if (sum !== 7) {
-          distributeResources(newGame, sum);
+          distributeResources(afterRoll, sum);
         } else {
-          for (const p of newGame.players) {
-            if (getTotalResources(p) >= 8) discardHalf(newGame, p.id);
+          for (const p of afterRoll.players) {
+            if (getTotalResources(p) >= 8) discardHalf(afterRoll, p.id);
           }
         }
-        addLog(newGame, `${prev.players[prev.currentPlayer].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
-        return newGame;
+        addLog(afterRoll, `${prev.players[aiPlayerId].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
+
+        // Build decisions + advance turn
+        return aiDoFullTurn(afterRoll);
       });
+    }, 900);
 
-      // After showing the dice result, build and end turn
-      t2 = setTimeout(() => {
-        if (cancelled) return;
-        setGame(prev => {
-          if (prev.phase !== 'playing' || prev.players[prev.currentPlayer].isHuman) return prev;
-          return aiDoFullTurn(prev);
-        });
-      }, 1000);
-    }, 700);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(t1);
-      if (t2) clearTimeout(t2);
-    };
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.currentPlayer, game.phase]);
 
