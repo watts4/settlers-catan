@@ -215,19 +215,25 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.currentPlayer, game.phase, game.setupStep]);
 
-  // ── AI playing turn — Step 1: roll dice ─────────────────────────────────────
+  // ── AI playing turn — roll dice, then build + end turn ──────────────────────
   useEffect(() => {
-    if (game.phase !== 'playing' || game.players[game.currentPlayer]?.isHuman || game.dice !== null) return;
-    const t = setTimeout(() => {
+    if (game.phase !== 'playing' || game.players[game.currentPlayer]?.isHuman) return;
+
+    let cancelled = false;
+    let t2: ReturnType<typeof setTimeout> | null = null;
+
+    const t1 = setTimeout(() => {
+      if (cancelled) return;
+
+      // Roll dice and distribute resources
+      const dice = rollDice();
+      const sum = dice[0] + dice[1];
       setGame(prev => {
-        if (prev.phase !== 'playing' || prev.players[prev.currentPlayer].isHuman || prev.dice !== null) return prev;
-        const dice = rollDice();
-        const sum = dice[0] + dice[1];
+        if (prev.phase !== 'playing' || prev.players[prev.currentPlayer].isHuman) return prev;
         const newGame = { ...prev, dice };
         if (sum !== 7) {
           distributeResources(newGame, sum);
         } else {
-          // Discard half for anyone with 8+ cards
           for (const p of newGame.players) {
             if (getTotalResources(p) >= 8) discardHalf(newGame, p.id);
           }
@@ -235,23 +241,24 @@ function App() {
         addLog(newGame, `${prev.players[prev.currentPlayer].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
         return newGame;
       });
-    }, 600);
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game.currentPlayer, game.phase, game.dice]);
 
-  // ── AI playing turn — Step 2: build decisions + end turn ────────────────────
-  useEffect(() => {
-    if (game.phase !== 'playing' || game.players[game.currentPlayer]?.isHuman || game.dice === null) return;
-    const t = setTimeout(() => {
-      setGame(prev => {
-        if (prev.phase !== 'playing' || prev.players[prev.currentPlayer].isHuman || prev.dice === null) return prev;
-        return aiDoFullTurn(prev);
-      });
-    }, 1100);
-    return () => clearTimeout(t);
+      // After showing the dice result, build and end turn
+      t2 = setTimeout(() => {
+        if (cancelled) return;
+        setGame(prev => {
+          if (prev.phase !== 'playing' || prev.players[prev.currentPlayer].isHuman) return prev;
+          return aiDoFullTurn(prev);
+        });
+      }, 1000);
+    }, 700);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t1);
+      if (t2) clearTimeout(t2);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game.dice, game.currentPlayer, game.phase]);
+  }, [game.currentPlayer, game.phase]);
 
   // ── Core placement ────────────────────────────────────────────────────────
 
