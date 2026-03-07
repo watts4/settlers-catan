@@ -130,22 +130,40 @@ function getAdjacentResources(game: GameState, vertexId: string): Resource[] {
 
 const RESOURCES: Resource[] = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
 
+// Icons used in UI (player cards, build buttons, trade, log)
 const HEX_ICON: Record<Resource, string> = {
-  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '⛏️', desert: '☀️', gold: '💰',
+  wood: '🪵', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '🪨', desert: '🏜️', gold: '💰',
 };
 
-const HEX_LABEL: Record<Resource, string> = {
-  wood: 'Forest', brick: 'Hills', sheep: 'Pasture',
-  wheat: 'Fields', ore: 'Mountains', desert: 'Desert', gold: 'Gold',
+// Large illustrated emoji shown on each hex tile — no text labels, just visual art
+const HEX_TILE_EMOJI: Record<Resource, string[]> = {
+  wood:   ['🌲', '🌲', '🌲'],  // three trees
+  brick:  ['🧱', '⛰️'],        // brick + hill
+  sheep:  ['🐑', '🌿'],        // sheep on grass
+  wheat:  ['🌾', '🌾'],        // wheat sheaves
+  ore:    ['⛰️', '🪨'],        // mountains + ore
+  desert: ['🏜️'],              // desert
+  gold:   ['💰'],
 };
 
 const HEX_COLOR: Record<Resource, string> = {
-  wood: '#2d5a27', brick: '#8b4513', sheep: '#7ec850',
-  wheat: '#daa520', ore: '#708090', desert: '#d2b48c', gold: '#ffd700',
+  wood:   '#1e4d1a',  // deep forest green
+  brick:  '#7a3010',  // terracotta/clay
+  sheep:  '#6db84a',  // pasture green
+  wheat:  '#c8961e',  // golden fields
+  ore:    '#5a6470',  // slate gray
+  desert: '#c8aa6e',  // sandy tan
+  gold:   '#d4a017',
+};
+
+// Number of probability dots for each dice number (2-dice combinations out of 36)
+// 2→1, 3→2, 4→3, 5→4, 6→5, 8→5, 9→4, 10→3, 11→2, 12→1
+const PROBABILITY_DOTS: Record<number, number> = {
+  2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 8: 5, 9: 4, 10: 3, 11: 2, 12: 1,
 };
 
 const PORT_ICON: Record<string, string> = {
-  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '⛏️', generic: '⚓',
+  wood: '🪵', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '🪨', generic: '⚓',
 };
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -370,30 +388,67 @@ function App() {
       const a = (i * Math.PI) / 3;
       pts.push(`${cx + HEX_SIZE * Math.cos(a)},${cy + HEX_SIZE * Math.sin(a)}`);
     }
+
     const hasNumber = Boolean(hex.number);
-    const numColor = (hex.number === 6 || hex.number === 8) ? '#c0392b' : '#2c3e50';
+    const isHighNumber = hex.number === 6 || hex.number === 8;
+    const numColor = isHighNumber ? '#c0392b' : '#1a1a2e';
+    const dots = hex.number ? (PROBABILITY_DOTS[hex.number] ?? 0) : 0;
+    const dotSpacing = 6;
+    const totalDotWidth = (dots - 1) * dotSpacing;
+
+    // Illustrated emoji — position depends on whether there's a number token
+    const tileEmojis = HEX_TILE_EMOJI[hex.resource];
+    const emojiY = hasNumber ? cy - 16 : cy + 4;
 
     return (
       <g key={hex.id}>
-        <polygon points={pts.join(' ')} fill={HEX_COLOR[hex.resource]} stroke="#5a3010" strokeWidth="3" className="hex" />
-        {/* Resource icon */}
-        <text x={cx} y={cy - (hasNumber ? 22 : 8)} textAnchor="middle" fontSize="22" style={{ userSelect: 'none' }}>
-          {HEX_ICON[hex.resource]}
-        </text>
-        <text x={cx} y={cy - (hasNumber ? 6 : 10)} textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.8)" fontWeight="bold" style={{ userSelect: 'none' }}>
-          {HEX_LABEL[hex.resource].toUpperCase()}
-        </text>
-        {/* Number token */}
-        {hasNumber && (
+        <polygon points={pts.join(' ')} fill={HEX_COLOR[hex.resource]} stroke="#3a200a" strokeWidth="3" className="hex" />
+
+        {/* Tile art — emoji spread across the hex, no text labels */}
+        {tileEmojis.length === 1 && (
+          <text x={cx} y={emojiY + 10} textAnchor="middle" fontSize="28" style={{ userSelect: 'none' }}>
+            {tileEmojis[0]}
+          </text>
+        )}
+        {tileEmojis.length === 2 && (
           <>
-            <circle cx={cx} cy={cy + 15} r={16} fill={hex.hasRobber ? '#444' : '#fff'} opacity={0.93} />
-            <text x={cx} y={cy + 20} textAnchor="middle" fill={numColor} fontSize="14" fontWeight="bold" style={{ userSelect: 'none' }}>
-              {hex.number}
-            </text>
+            <text x={cx - 13} y={emojiY + 8} textAnchor="middle" fontSize="22" style={{ userSelect: 'none' }}>{tileEmojis[0]}</text>
+            <text x={cx + 13} y={emojiY + 8} textAnchor="middle" fontSize="22" style={{ userSelect: 'none' }}>{tileEmojis[1]}</text>
           </>
         )}
+        {tileEmojis.length === 3 && (
+          <>
+            <text x={cx - 18} y={emojiY + 4} textAnchor="middle" fontSize="18" style={{ userSelect: 'none' }}>{tileEmojis[0]}</text>
+            <text x={cx}      y={emojiY - 4} textAnchor="middle" fontSize="18" style={{ userSelect: 'none' }}>{tileEmojis[1]}</text>
+            <text x={cx + 18} y={emojiY + 4} textAnchor="middle" fontSize="18" style={{ userSelect: 'none' }}>{tileEmojis[2]}</text>
+          </>
+        )}
+
+        {/* Number token with probability dots */}
+        {hasNumber && (
+          <g>
+            {/* Token background circle */}
+            <circle cx={cx} cy={cy + 14} r={19} fill={hex.hasRobber ? '#333' : '#f5e6c8'} stroke="#8b6914" strokeWidth="1.5" />
+            {/* The number */}
+            <text x={cx} y={cy + 10} textAnchor="middle" fill={numColor} fontSize={isHighNumber ? '15' : '14'} fontWeight="bold" style={{ userSelect: 'none' }}>
+              {hex.number}
+            </text>
+            {/* Probability dots below the number */}
+            {Array.from({ length: dots }).map((_, i) => (
+              <circle
+                key={i}
+                cx={cx - totalDotWidth / 2 + i * dotSpacing}
+                cy={cy + 22}
+                r={2}
+                fill={isHighNumber ? '#c0392b' : '#1a1a2e'}
+              />
+            ))}
+          </g>
+        )}
+
+        {/* Robber on desert (no number token) */}
         {hex.hasRobber && !hasNumber && (
-          <text x={cx} y={cy + 8} textAnchor="middle" fontSize="18" style={{ userSelect: 'none' }}>☠️</text>
+          <text x={cx} y={cy + 12} textAnchor="middle" fontSize="22" style={{ userSelect: 'none' }}>☠️</text>
         )}
       </g>
     );
@@ -646,7 +701,7 @@ function App() {
                             color: canGive ? '#fff' : '#555', cursor: canGive ? 'pointer' : 'not-allowed',
                             opacity: canGive ? 1 : 0.5,
                           }}
-                          title={`${have}/${ratio} ${HEX_LABEL[r]}`}
+                          title={`${have}/${ratio} ${r}`}
                         >
                           {HEX_ICON[r]}{ratio}
                         </button>
