@@ -2,7 +2,9 @@
 
 import type { Hex, Port, Vertex, Edge, Resource } from './types';
 
-// Catan board layout (classic 4-player)
+export const HEX_SIZE = 55;
+
+// Standard Catan board layout (19 tiles)
 const BOARD_LAYOUT: { resource: Resource; number: number | null }[] = [
   { resource: 'ore', number: 10 },
   { resource: 'wheat', number: 2 },
@@ -11,7 +13,7 @@ const BOARD_LAYOUT: { resource: Resource; number: number | null }[] = [
   { resource: 'brick', number: 6 },
   { resource: 'wheat', number: 4 },
   { resource: 'wood', number: 8 },
-  { resource: 'desert', number: null }, // robber starts here
+  { resource: 'desert', number: null },
   { resource: 'sheep', number: 3 },
   { resource: 'ore', number: 11 },
   { resource: 'brick', number: 5 },
@@ -25,30 +27,62 @@ const BOARD_LAYOUT: { resource: Resource; number: number | null }[] = [
   { resource: 'wood', number: 4 },
 ];
 
-// Axial coordinates for hex grid (q, r)
+// Proper 3-ring hexagonal board using axial coordinates.
+// Constraint: max(|q|, |r|, |q+r|) <= 2 gives exactly 19 hexes in a regular hexagon shape.
+// Columns (q from -2 to 2) have 3, 4, 5, 4, 3 hexes respectively.
 const HEX_COORDS: { q: number; r: number }[] = [
-  { q: -2, r: 0 }, { q: -2, r: 1 }, { q: -1, r: -1 }, { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: -2 },
-  { q: 0, r: -1 }, { q: 0, r: 0 }, { q: 0, r: 1 }, { q: 0, r: 2 }, { q: 1, r: -2 }, { q: 1, r: -1 },
-  { q: 1, r: 0 }, { q: 1, r: 1 }, { q: 1, r: 2 }, { q: 2, r: -2 }, { q: 2, r: -1 }, { q: 2, r: 0 },
-  { q: 2, r: 1 },
+  // q = -2 (3 hexes): r = 0, 1, 2
+  { q: -2, r: 0 }, { q: -2, r: 1 }, { q: -2, r: 2 },
+  // q = -1 (4 hexes): r = -1, 0, 1, 2
+  { q: -1, r: -1 }, { q: -1, r: 0 }, { q: -1, r: 1 }, { q: -1, r: 2 },
+  // q =  0 (5 hexes): r = -2, -1, 0, 1, 2
+  { q: 0, r: -2 }, { q: 0, r: -1 }, { q: 0, r: 0 }, { q: 0, r: 1 }, { q: 0, r: 2 },
+  // q =  1 (4 hexes): r = -2, -1, 0, 1
+  { q: 1, r: -2 }, { q: 1, r: -1 }, { q: 1, r: 0 }, { q: 1, r: 1 },
+  // q =  2 (3 hexes): r = -2, -1, 0
+  { q: 2, r: -2 }, { q: 2, r: -1 }, { q: 2, r: 0 },
 ];
 
-// Port locations (edge index on hex, direction)
+// Standard 9 Catan ports (5 resource + 4 generic)
 const PORTS: { q: number; r: number; edge: number; resource: Resource | 'generic' }[] = [
-  { q: -2, r: 0, edge: 4, resource: 'wood' },
+  { q: -2, r: 0, edge: 4, resource: 'ore' },
   { q: -2, r: 1, edge: 5, resource: 'generic' },
-  { q: -1, r: -1, edge: 2, resource: 'brick' },
-  { q: 0, r: -2, edge: 1, resource: 'sheep' },
-  { q: 0, r: 2, edge: 4, resource: 'wheat' },
-  { q: 1, r: 2, edge: 0, resource: 'ore' },
+  { q: -1, r: -1, edge: 0, resource: 'wood' },
+  { q: 0, r: -2, edge: 1, resource: 'generic' },
+  { q: 1, r: -2, edge: 2, resource: 'brick' },
   { q: 2, r: -2, edge: 2, resource: 'generic' },
-  { q: 2, r: -1, edge: 3, resource: 'wood' },
+  { q: 2, r: 0, edge: 3, resource: 'sheep' },
+  { q: 1, r: 1, edge: 4, resource: 'wheat' },
+  { q: -1, r: 2, edge: 0, resource: 'generic' },
 ];
+
+// Get pixel center of a hex
+export function hexCenterPx(q: number, r: number): { cx: number; cy: number } {
+  return {
+    cx: HEX_SIZE * 1.5 * q,
+    cy: HEX_SIZE * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r),
+  };
+}
+
+// Get pixel position of a vertex (corner loc 0-5) on a hex
+// Flat-top hexes: loc 0 = right, going clockwise
+function vertexPx(q: number, r: number, loc: number): { x: number; y: number } {
+  const { cx, cy } = hexCenterPx(q, r);
+  const angle = (loc * Math.PI) / 3;
+  return {
+    x: cx + HEX_SIZE * Math.cos(angle),
+    y: cy + HEX_SIZE * Math.sin(angle),
+  };
+}
+
+function posKey(x: number, y: number): string {
+  return `${Math.round(x)},${Math.round(y)}`;
+}
 
 export function generateBoard(): { hexes: Hex[]; vertices: Vertex[]; edges: Edge[]; ports: Port[] } {
   // Shuffle the layout
   const shuffled = [...BOARD_LAYOUT].sort(() => Math.random() - 0.5);
-  
+
   // Create hexes
   const hexes: Hex[] = HEX_COORDS.map((coords, i) => ({
     id: `hex-${i}`,
@@ -59,23 +93,23 @@ export function generateBoard(): { hexes: Hex[]; vertices: Vertex[]; edges: Edge
     hasRobber: shuffled[i].resource === 'desert',
   }));
 
-  // Create vertices (corners of hexes)
+  // Create vertices (corners of hexes), deduplicated by pixel position
   const vertices: Vertex[] = [];
   const vertexMap = new Map<string, Vertex>();
-  
+
   hexes.forEach(hex => {
     for (let loc = 0; loc < 6; loc++) {
-      // Calculate vertex coordinates
-      const q = hex.q + Math.floor((loc + 1) / 2) / 3 * 2;
-      const r = hex.r + (loc % 3 === 2 ? 1 : 0);
-      const key = `${q},${r},${loc}`;
-      
+      const { x, y } = vertexPx(hex.q, hex.r, loc);
+      const key = posKey(x, y);
+
       if (!vertexMap.has(key)) {
         const vertex: Vertex = {
           id: `vertex-${vertices.length}`,
-          q,
-          r,
+          q: hex.q,
+          r: hex.r,
           location: loc,
+          x,
+          y,
           settlements: {},
         };
         vertices.push(vertex);
@@ -84,20 +118,23 @@ export function generateBoard(): { hexes: Hex[]; vertices: Vertex[]; edges: Edge
     }
   });
 
-  // Create edges (roads/ships)
+  // Create edges (sides of hexes), deduplicated by midpoint pixel position
   const edges: Edge[] = [];
   const edgeMap = new Map<string, Edge>();
-  
+
   hexes.forEach(hex => {
     for (let loc = 0; loc < 6; loc++) {
-      const key = `${hex.q},${hex.r},${loc}`;
-      
+      const { x: x1, y: y1 } = vertexPx(hex.q, hex.r, loc);
+      const { x: x2, y: y2 } = vertexPx(hex.q, hex.r, (loc + 1) % 6);
+      const key = posKey((x1 + x2) / 2, (y1 + y2) / 2);
+
       if (!edgeMap.has(key)) {
         const edge: Edge = {
           id: `edge-${edges.length}`,
           q: hex.q,
           r: hex.r,
           location: loc,
+          x1, y1, x2, y2,
           roads: {},
         };
         edges.push(edge);
@@ -121,25 +158,10 @@ export function generateBoard(): { hexes: Hex[]; vertices: Vertex[]; edges: Edge
 export function getHexNeighbors(hex: Hex, allHexes: Hex[]): Hex[] {
   const directions = [
     { dq: 1, dr: 0 }, { dq: 1, dr: -1 }, { dq: 0, dr: -1 },
-    { dq: -1, dr: 0 }, { dq: -1, dr: 1 }, { dq: 0, dr: 1 }
+    { dq: -1, dr: 0 }, { dq: -1, dr: 1 }, { dq: 0, dr: 1 },
   ];
-  
+
   return directions
     .map(d => allHexes.find(h => h.q === hex.q + d.dq && h.r === hex.r + d.dr))
     .filter((h): h is Hex => h !== undefined);
-}
-
-// Get vertices adjacent to a hex
-export function getHexVertices(hex: Hex, vertices: Vertex[]): Vertex[] {
-  return vertices.filter(v => {
-    // Simple check - vertices on this hex have similar q,r
-    const dq = Math.abs(v.q - hex.q);
-    const dr = Math.abs(v.r - hex.r);
-    return dq < 1.5 && dr < 1.5;
-  });
-}
-
-// Get edges adjacent to a hex
-export function getHexEdges(hex: Hex, edges: Edge[]): Edge[] {
-  return edges.filter(e => e.q === hex.q && e.r === hex.r);
 }

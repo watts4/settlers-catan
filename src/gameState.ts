@@ -1,7 +1,7 @@
 // Game state management for Settlers of Catan
 
 import type { GameState, Player, Resource, Hex, Vertex, Edge } from './types';
-import { generateBoard } from './board';
+import { generateBoard, hexCenterPx, HEX_SIZE } from './board';
 
 const PLAYER_COLORS = ['#e74c3c', '#3498db', '#ecf0f1', '#e67e22']; // red, blue, white (or light gray), orange
 const PLAYER_NAMES = ['You', 'Red', 'Blue', 'Orange'];
@@ -78,11 +78,11 @@ export function distributeResources(state: GameState, diceSum: number): void {
   
   state.board.hexes.forEach(hex => {
     if (hex.number === diceSum && !hex.hasRobber) {
-      // Get all vertices on this hex
+      // Get all vertices on this hex by pixel distance from center
+      const { cx, cy } = hexCenterPx(hex.q, hex.r);
       const hexVertices = state.board.vertices.filter(v => {
-        const dq = Math.abs(v.q - hex.q);
-        const dr = Math.abs(v.r - hex.r);
-        return dq < 1 && dr < 1;
+        const dx = v.x - cx, dy = v.y - cy;
+        return Math.sqrt(dx * dx + dy * dy) <= HEX_SIZE + 2;
       });
       
       hexVertices.forEach(vertex => {
@@ -106,12 +106,12 @@ export function distributeSetupResources(state: GameState, playerId: number, ver
   const vertex = state.board.vertices.find(v => v.id === vertexId);
   if (!vertex) return;
   
-  // Find adjacent hexes
+  // Find adjacent hexes by pixel distance (vertex is at HEX_SIZE from hex center)
   const adjacentHexes = state.board.hexes.filter(hex => {
-    const dq = Math.abs(hex.q - vertex.q);
-    const dr = Math.abs(hex.r - vertex.r);
-    // Vertices are close to hex centers
-    return dq < 1.5 && dr < 1.5 && hex.resource !== 'desert';
+    if (hex.resource === 'desert') return false;
+    const { cx, cy } = hexCenterPx(hex.q, hex.r);
+    const dx = vertex.x - cx, dy = vertex.y - cy;
+    return Math.sqrt(dx * dx + dy * dy) <= HEX_SIZE + 2;
   });
   
   const player = state.players[playerId];
@@ -431,10 +431,10 @@ export function moveRobber(state: GameState, hexId: string): void {
 
 // Get players adjacent to hex (for stealing)
 export function getPlayersAdjacentToHex(state: GameState, hex: Hex): Player[] {
+  const { cx, cy } = hexCenterPx(hex.q, hex.r);
   const adjacentVertices = state.board.vertices.filter(v => {
-    const dq = Math.abs(v.q - hex.q);
-    const dr = Math.abs(v.r - hex.r);
-    return dq < 1.5 && dr < 1.5;
+    const dx = v.x - cx, dy = v.y - cy;
+    return Math.sqrt(dx * dx + dy * dy) <= HEX_SIZE + 2;
   });
   
   const playerIds = new Set<number>();

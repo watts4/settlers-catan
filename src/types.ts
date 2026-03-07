@@ -24,6 +24,8 @@ export interface Vertex {
   q: number;
   r: number;
   location: number; // 0-5 on hex
+  x: number; // pixel x position
+  y: number; // pixel y position
   settlements: { [playerId: string]: 'settlement' | 'city' | null };
 }
 
@@ -32,6 +34,10 @@ export interface Edge {
   q: number;
   r: number;
   location: number; // 0-5 on hex
+  x1: number; // pixel coords of first endpoint
+  y1: number;
+  x2: number; // pixel coords of second endpoint
+  y2: number;
   roads: { [playerId: string]: PieceType | null };
 }
 
@@ -53,7 +59,7 @@ export interface Player {
   isHuman: boolean;
 }
 
-export type GamePhase = 
+export type GamePhase =
   | 'setup1'      // First settlement placement (clockwise)
   | 'setup2'      // Second settlement placement (reverse order)
   | 'playing'     // Main game - rolling
@@ -87,11 +93,9 @@ export interface GameState {
   largestArmyHolder: number | null;
   winner: number | null;
   log: GameLogEntry[];
-  // New fields for setup phase
-  setupRound: number;  // 1 or 2
-  playersFinishedSetup: number[];  // track who has completed setup
-  // New fields for 7 handling
-  playersToDiscard: number[];  // players who need to discard
-  selectedHexForRobber: Hex | null;  // hex selected for robber
-  stealFromPlayer: number | null;  // player to steal from
+  setupRound: number;
+  playersFinishedSetup: number[];
+  playersToDiscard: number[];
+  selectedHexForRobber: Hex | null;
+  stealFromPlayer: number | null;
 }
