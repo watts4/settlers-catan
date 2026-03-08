@@ -189,6 +189,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [tradeRequest, setTradeRequest] = useState<Partial<Record<Resource, number>>>({});
   const [buildError, setBuildError] = useState<string | null>(null);
   const [devCardMode, setDevCardMode] = useState<'knight' | 'road' | 'plenty' | 'monopoly' | null>(null);
+  const [devCardModalOpen, setDevCardModalOpen] = useState(false);
   const [roadBuildingRoadsLeft, setRoadBuildingRoadsLeft] = useState(0);
   const [yearOfPlentyPicks, setYearOfPlentyPicks] = useState<Resource[]>([]);
   const [devCardPlayedThisTurn, setDevCardPlayedThisTurn] = useState(false);
@@ -954,6 +955,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         return newGame;
       });
       setDevCardMode(null);
+      setDevCardModalOpen(false);
       setYearOfPlentyPicks([]);
       setDevCardPlayedThisTurn(true);
     }
@@ -970,6 +972,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       return newGame;
     });
     setDevCardMode(null);
+    setDevCardModalOpen(false);
     setDevCardPlayedThisTurn(true);
   };
 
@@ -1450,6 +1453,155 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             {renderRobberTargets()}
           </svg>
 
+          {/* Floating dev card icon — top-right of board */}
+          {game.phase === 'playing' && (() => {
+            const myPlayer = multiplayerConfig
+              ? game.players[multiplayerConfig.mySlot]
+              : game.players.find(p => p.isHuman);
+            const myCards = myPlayer?.devCards ?? [];
+            if (myCards.length === 0) return null;
+            const hasPlayable = isMyTurn && !devCardPlayedThisTurn && !mustMoveRobber && !mustDiscard
+              && myCards.some(c => c !== 'victory' && (devHandAtTurnStart[c] ?? 0) > 0);
+            const cardCount = myCards.length;
+            return (
+              <button
+                className={`floating-devcard-btn${hasPlayable ? ' devcard-glow' : ''}`}
+                onClick={() => setDevCardModalOpen(true)}
+                title="Dev Cards"
+              >
+                <div className="devcard-stack">
+                  {cardCount >= 3 && <div className="devcard-back2" />}
+                  {cardCount >= 2 && <div className="devcard-back" />}
+                  <div className="devcard-front">🃏</div>
+                </div>
+                <span className="devcard-count">×{cardCount}</span>
+              </button>
+            );
+          })()}
+
+          {/* Dev card modal */}
+          {devCardModalOpen && (() => {
+            const myPlayer = multiplayerConfig
+              ? game.players[multiplayerConfig.mySlot]
+              : game.players.find(p => p.isHuman);
+            const myCards = myPlayer?.devCards ?? [];
+            const cardLabel: Record<string, string> = {
+              knight: '⚔️ Knight', road: '🛣️ Road Building',
+              plenty: '🌟 Year of Plenty', monopoly: '💰 Monopoly', victory: '🏆 Victory Point',
+            };
+            const cardDesc: Record<string, string> = {
+              knight: 'Move the robber and steal a resource',
+              road: 'Place 2 free roads anywhere',
+              plenty: 'Take any 2 resources from the bank',
+              monopoly: 'Steal all of one resource type from everyone',
+              victory: 'Counts as 1 victory point',
+            };
+            return (
+              <div
+                style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}
+                onClick={() => { setDevCardModalOpen(false); setDevCardMode(null); setYearOfPlentyPicks([]); }}
+              >
+                <div
+                  style={{ background: '#1a2332', border: '2px solid #ffd700', borderRadius: '16px', padding: '20px', maxWidth: '380px', width: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.7)' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  {/* Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={{ margin: 0, color: '#ffd700', fontSize: '1.1rem' }}>🃏 Development Cards</h3>
+                    <button
+                      onClick={() => { setDevCardModalOpen(false); setDevCardMode(null); setYearOfPlentyPicks([]); }}
+                      style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1, padding: '2px 6px' }}
+                    >✕</button>
+                  </div>
+
+                  {/* Year of Plenty picker */}
+                  {devCardMode === 'plenty' && (
+                    <div>
+                      <div style={{ fontSize: '0.9rem', color: '#ffd700', marginBottom: '10px' }}>
+                        🌟 Pick {2 - yearOfPlentyPicks.length} resource{2 - yearOfPlentyPicks.length !== 1 ? 's' : ''}:
+                        {yearOfPlentyPicks.length > 0 && <span style={{ marginLeft: '6px' }}>{yearOfPlentyPicks.map(r => HEX_ICON[r]).join(' ')}</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                        {RESOURCES.map(r => (
+                          <button key={r} onClick={() => handlePickYearOfPlentyResource(r)}
+                            style={{ padding: '10px 14px', background: '#27ae60', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '1.3rem' }}>
+                            {HEX_ICON[r]}
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={() => { setDevCardMode(null); setYearOfPlentyPicks([]); }}
+                        style={{ padding: '6px 14px', background: '#444', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        ← Back
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Monopoly picker */}
+                  {devCardMode === 'monopoly' && (
+                    <div>
+                      <div style={{ fontSize: '0.9rem', color: '#ffd700', marginBottom: '10px' }}>💰 Steal all of which resource?</div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                        {RESOURCES.map(r => (
+                          <button key={r} onClick={() => handlePlayMonopoly(r)}
+                            style={{ padding: '10px 14px', background: '#c0392b', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '1.3rem' }}
+                            title={r}>
+                            {HEX_ICON[r]}
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={() => setDevCardMode(null)}
+                        style={{ padding: '6px 14px', background: '#444', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        ← Back
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Card list */}
+                  {!devCardMode && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {(['knight', 'road', 'plenty', 'monopoly', 'victory'] as const).map(cardType => {
+                        const count = myCards.filter(c => c === cardType).length;
+                        if (count === 0) return null;
+                        const canPlay = cardType !== 'victory' && isMyTurn && !devCardPlayedThisTurn && !mustMoveRobber && !mustDiscard && game.phase === 'playing' && (devHandAtTurnStart[cardType] ?? 0) > 0;
+                        const newThisTurn = cardType !== 'victory' && !devCardPlayedThisTurn && (devHandAtTurnStart[cardType] ?? 0) === 0 && count > 0;
+                        return (
+                          <div key={cardType} style={{ background: '#253545', borderRadius: '10px', padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '2px' }}>
+                                {cardLabel[cardType]}
+                                {count > 1 && <span style={{ color: '#aaa', marginLeft: '5px', fontWeight: 'normal' }}>×{count}</span>}
+                                {cardType === 'victory' && <span style={{ color: '#ffd700', marginLeft: '5px' }}>+{count} VP</span>}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: '#7a9ab0' }}>{cardDesc[cardType]}</div>
+                            </div>
+                            {canPlay && (
+                              <button
+                                onClick={() => {
+                                  if (cardType === 'knight') { handlePlayKnight(); setDevCardModalOpen(false); }
+                                  else if (cardType === 'road') { handlePlayRoadBuilding(); setDevCardModalOpen(false); }
+                                  else if (cardType === 'plenty') setDevCardMode('plenty');
+                                  else if (cardType === 'monopoly') setDevCardMode('monopoly');
+                                }}
+                                style={{ padding: '7px 16px', background: '#e67e22', border: 'none', borderRadius: '7px', color: '#fff', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 'bold', whiteSpace: 'nowrap', flexShrink: 0 }}
+                              >
+                                Play
+                              </button>
+                            )}
+                            {!canPlay && cardType !== 'victory' && (
+                              <span style={{ fontSize: '0.75rem', color: '#666', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                {devCardPlayedThisTurn ? 'used this turn' : newThisTurn ? 'next turn' : !isMyTurn ? 'not your turn' : ''}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Floating dice button — lower-left of board */}
           {game.phase === 'playing' && (() => {
             const needsRoll = isMyTurn && !game.dice && !isRolling;
@@ -1666,105 +1818,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 );
               })()}
 
-              {/* Dev Cards Panel — shown first so it's always visible */}
-              {isMyTurn && !isSetup && (
-                <div style={{ background: '#1a2a3a', border: '2px solid #8b6914', borderRadius: '8px', padding: '10px', marginBottom: '10px' }}>
-                  <h4 style={{ margin: '0 0 8px 0', color: '#ffd700' }}>🃏 Dev Cards {currentPlayer.devCards.length > 0 && `(${currentPlayer.devCards.length})`}</h4>
-                  {currentPlayer.devCards.length === 0 ? (
-                    <div style={{ fontSize: '0.8rem', color: '#666' }}>None — buy one in the Build section below</div>
-                  ) : devCardMode === 'plenty' ? (
-                    <div>
-                      <div style={{ fontSize: '0.85rem', color: '#ffd700', marginBottom: '6px' }}>
-                        🌟 Year of Plenty — pick {2 - yearOfPlentyPicks.length} resource{2 - yearOfPlentyPicks.length !== 1 ? 's' : ''}:
-                        {yearOfPlentyPicks.length > 0 && <span> {yearOfPlentyPicks.map(r => HEX_ICON[r]).join(' ')}</span>}
-                      </div>
-                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                        {RESOURCES.map(r => (
-                          <button key={r} onClick={() => handlePickYearOfPlentyResource(r)}
-                            style={{ padding: '5px 9px', background: '#27ae60', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem' }}>
-                            {HEX_ICON[r]}
-                          </button>
-                        ))}
-                      </div>
-                      <button onClick={() => { setDevCardMode(null); setYearOfPlentyPicks([]); }}
-                        style={{ fontSize: '0.75rem', padding: '3px 8px', background: '#555', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer' }}>
-                        Cancel
-                      </button>
-                    </div>
-                  ) : devCardMode === 'monopoly' ? (
-                    <div>
-                      <div style={{ fontSize: '0.85rem', color: '#ffd700', marginBottom: '6px' }}>💰 Monopoly — pick a resource to steal from all players:</div>
-                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '6px' }}>
-                        {RESOURCES.map(r => (
-                          <button key={r} onClick={() => handlePlayMonopoly(r)}
-                            style={{ padding: '5px 9px', background: '#e74c3c', border: 'none', borderRadius: '5px', cursor: 'pointer', fontSize: '1rem' }}
-                            title={r}>
-                            {HEX_ICON[r]}
-                          </button>
-                        ))}
-                      </div>
-                      <button onClick={() => setDevCardMode(null)}
-                        style={{ fontSize: '0.75rem', padding: '3px 8px', background: '#555', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer' }}>
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {(['knight', 'road', 'plenty', 'monopoly', 'victory'] as const).map(cardType => {
-                        const count = currentPlayer.devCards.filter(c => c === cardType).length;
-                        if (count === 0) return null;
-                        // Can only play cards that existed at the start of this turn (not bought this turn)
-                        const canPlay = cardType !== 'victory' && !devCardPlayedThisTurn && !mustMoveRobber && !mustDiscard && game.phase === 'playing' && (devHandAtTurnStart[cardType] ?? 0) > 0;
-                        const cardLabel: Record<string, string> = {
-                          knight: '⚔️ Knight',
-                          road: '🛣️ Road Building',
-                          plenty: '🌟 Year of Plenty',
-                          monopoly: '💰 Monopoly',
-                          victory: '🏆 Victory Point',
-                        };
-                        const cardDesc: Record<string, string> = {
-                          knight: 'Move robber, steal a resource',
-                          road: 'Place 2 free roads',
-                          plenty: 'Take any 2 resources',
-                          monopoly: 'Steal all of 1 resource',
-                          victory: 'Counts as 1 VP',
-                        };
-                        return (
-                          <div key={cardType} style={{ background: '#253545', borderRadius: '5px', padding: '6px 8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <div>
-                                <span style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{cardLabel[cardType]}</span>
-                                {count > 1 && <span style={{ color: '#aaa', marginLeft: '4px' }}>×{count}</span>}
-                                {cardType === 'victory' && <span style={{ color: '#ffd700', marginLeft: '4px' }}>(+{count} VP)</span>}
-                              </div>
-                              {canPlay && (
-                                <button
-                                  onClick={() => {
-                                    if (cardType === 'knight') handlePlayKnight();
-                                    else if (cardType === 'road') handlePlayRoadBuilding();
-                                    else if (cardType === 'plenty') setDevCardMode('plenty');
-                                    else if (cardType === 'monopoly') setDevCardMode('monopoly');
-                                  }}
-                                  style={{ padding: '4px 12px', background: '#e67e22', border: 'none', borderRadius: '4px', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}
-                                >
-                                  Play
-                                </button>
-                              )}
-                              {cardType !== 'victory' && devCardPlayedThisTurn && (
-                                <span style={{ fontSize: '0.75rem', color: '#888' }}>used this turn</span>
-                              )}
-                              {cardType !== 'victory' && !devCardPlayedThisTurn && (devHandAtTurnStart[cardType] ?? 0) === 0 && count > 0 && (
-                                <span style={{ fontSize: '0.75rem', color: '#888' }}>next turn</span>
-                              )}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '2px' }}>{cardDesc[cardType]}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Discard UI — shown when rolling 7 with 8+ cards */}
               {humanDiscardPending && (() => {
