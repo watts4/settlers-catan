@@ -11,6 +11,7 @@ import { auth } from './firebase';
 interface LandingPageProps {
   onPlaySolo: () => void;
   onResumeSolo: () => void;
+  onDiscardSolo: () => void;
   hasSoloSave: boolean;
   onCreateMultiplayer: (playerName: string) => void;
   onJoinMultiplayer: (roomCode: string, playerName: string) => void;
@@ -36,6 +37,7 @@ const COLORS = {
 export default function LandingPage({
   onPlaySolo,
   onResumeSolo,
+  onDiscardSolo,
   hasSoloSave,
   onCreateMultiplayer,
   onJoinMultiplayer,
@@ -287,26 +289,46 @@ export default function LandingPage({
         {/* Solo card */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {hasSoloSave && (
-            <button
-              onClick={onResumeSolo}
-              style={{
-                background: `linear-gradient(135deg, #2a3a1a, #1a2a0a)`,
-                border: `2px solid ${COLORS.green}`,
-                borderRadius: '12px',
-                padding: '14px 20px',
-                cursor: 'pointer',
-                color: COLORS.white,
-                textAlign: 'center',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                fontWeight: 700,
-                fontSize: '15px',
-              }}
-            >
-              <span>▶️</span> Resume Solo Game
-            </button>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                onClick={onResumeSolo}
+                style={{
+                  flex: 1,
+                  background: `linear-gradient(135deg, #2a3a1a, #1a2a0a)`,
+                  border: `2px solid ${COLORS.green}`,
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  cursor: 'pointer',
+                  color: COLORS.white,
+                  textAlign: 'center',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  fontWeight: 700,
+                  fontSize: '14px',
+                }}
+              >
+                <span>▶️</span> Resume Solo
+              </button>
+              <button
+                onClick={onDiscardSolo}
+                title="Discard saved game"
+                style={{
+                  background: 'transparent',
+                  border: `2px solid ${COLORS.red}66`,
+                  borderRadius: '12px',
+                  padding: '12px 10px',
+                  cursor: 'pointer',
+                  color: COLORS.red,
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                ✕ Discard
+              </button>
+            </div>
           )}
           <button
             onClick={onPlaySolo}

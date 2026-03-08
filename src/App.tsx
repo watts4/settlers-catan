@@ -1362,34 +1362,33 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   return (
     <div className="game">
       <header className="header">
-        <h1>🎲 Settlers of Catan</h1>
-        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', margin: '8px 0 0' }}>
-          {!multiplayerConfig && (
-            <button className="btn btn-secondary" onClick={handleNewGame} style={{ maxWidth: '120px' }}>
-              New Game
-            </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+          {/* Left: menu button */}
+          <button
+            onClick={onLeaveGame}
+            style={{ padding: '5px 12px', background: '#3a2a1a', border: '1px solid #6a4a2a', borderRadius: '6px', color: '#ccc', cursor: 'pointer', fontSize: '0.82rem', whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
+            ← Menu
+          </button>
+
+          {/* Center: turn info */}
+          <div className="turn-info" style={{ margin: 0, flex: 1, textAlign: 'center' }}>
+            {isSetup
+              ? `Setup ${game.phase === 'setup1' ? '(Round 1 →)' : '(Round 2 ←)'} — ${currentPlayer?.name}`
+              : `Turn ${game.turn} | ${currentPlayer?.name}'s Turn`}
+          </div>
+
+          {/* Right: room badge (multiplayer) or spacer */}
+          {multiplayerConfig ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+              <span style={{ color: '#ffd700', fontWeight: 'bold', letterSpacing: '2px', fontSize: '0.8rem' }}>{multiplayerConfig.roomId}</span>
+              <button onClick={handleCopyInviteLink} title="Copy invite link" style={{ background: 'none', border: '1px solid #4a6a8a', borderRadius: '4px', color: '#aaa', cursor: 'pointer', fontSize: '0.7rem', padding: '2px 5px' }}>
+                📋
+              </button>
+            </div>
+          ) : (
+            <div style={{ width: '70px', flexShrink: 0 }} />
           )}
-          {multiplayerConfig && (
-            <>
-              <div style={{ background: '#1a2a3a', border: '1px solid #4a6a8a', borderRadius: '6px', padding: '4px 10px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ color: '#aaa' }}>Room:</span>
-                <span style={{ color: '#ffd700', fontWeight: 'bold', letterSpacing: '2px' }}>{multiplayerConfig.roomId}</span>
-                <button onClick={handleCopyInviteLink} title="Copy invite link" style={{ background: 'none', border: '1px solid #4a6a8a', borderRadius: '4px', color: '#aaa', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px' }}>
-                  📋 Copy Link
-                </button>
-              </div>
-              {onLeaveGame && (
-                <button onClick={onLeaveGame} style={{ padding: '4px 10px', background: '#7b1a1a', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}>
-                  ✕ Leave
-                </button>
-              )}
-            </>
-          )}
-        </div>
-        <div className="turn-info">
-          {isSetup
-            ? `Setup ${game.phase === 'setup1' ? '(Round 1 →)' : '(Round 2 ←)'} — ${currentPlayer?.name}`
-            : `Turn ${game.turn} | ${currentPlayer?.name}'s Turn`}
         </div>
       </header>
 
@@ -2165,9 +2164,16 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             <p style={{ color: '#aaa', marginBottom: '24px' }}>
               {calculateVP(game.players[game.winner], game)} victory points
             </p>
-            <button className="btn btn-primary" onClick={handleNewGame}>
-              🎲 New Game
-            </button>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button className="btn btn-primary" onClick={handleNewGame}>
+                🎲 Play Again
+              </button>
+              {onLeaveGame && (
+                <button className="btn btn-secondary" onClick={onLeaveGame}>
+                  ← Main Menu
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

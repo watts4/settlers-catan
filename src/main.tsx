@@ -59,6 +59,11 @@ function Root() {
     setScreen('game');
   };
 
+  const handleDiscardSolo = () => {
+    localStorage.removeItem('catan_solo_save');
+    setHasSoloSave(false);
+  };
+
   const handleResumeSolo = () => {
     try {
       const raw = localStorage.getItem('catan_solo_save');
@@ -142,6 +147,7 @@ function Root() {
       <LandingPage
         onPlaySolo={handlePlaySolo}
         onResumeSolo={handleResumeSolo}
+        onDiscardSolo={handleDiscardSolo}
         hasSoloSave={hasSoloSave}
         onCreateMultiplayer={handleCreateMultiplayer}
         onJoinMultiplayer={handleJoinMultiplayer}
