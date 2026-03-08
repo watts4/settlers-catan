@@ -136,7 +136,7 @@ const RESOURCES: Resource[] = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
 
 // Icons used in UI (player cards, build buttons, trade, log)
 const HEX_ICON: Record<Resource, string> = {
-  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '🪨', desert: '🏜️', gold: '💰',
+  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '⛰️', desert: '🏜️', gold: '💰',
 };
 
 // Large illustrated emoji shown on each hex tile — no text labels, just visual art
@@ -145,7 +145,7 @@ const HEX_TILE_EMOJI: Record<Resource, string[]> = {
   brick:  ['🧱', '⛰️'],        // brick + hill
   sheep:  ['🐑', '🌿'],        // sheep on grass
   wheat:  ['🌾', '🌾'],        // wheat sheaves
-  ore:    ['⛰️', '🪨'],        // mountains + stone
+  ore:    ['⛰️', '⛰️'],        // mountains + stone
   desert: ['🏜️'],              // desert
   gold:   ['💰'],
 };
@@ -167,7 +167,7 @@ const PROBABILITY_DOTS: Record<number, number> = {
 };
 
 const PORT_ICON: Record<string, string> = {
-  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '🪨', generic: '⚓',
+  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '⛰️', generic: '⚓',
 };
 
 // ── App ───────────────────────────────────────────────────────────────────────
