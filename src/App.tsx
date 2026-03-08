@@ -192,6 +192,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [devCardModalOpen, setDevCardModalOpen] = useState(false);
   const [bankTradeModalOpen, setBankTradeModalOpen] = useState(false);
   const [playerTradeModalOpen, setPlayerTradeModalOpen] = useState(false);
+  const [buildModalOpen, setBuildModalOpen] = useState(false);
   const [roadBuildingRoadsLeft, setRoadBuildingRoadsLeft] = useState(0);
   const [yearOfPlentyPicks, setYearOfPlentyPicks] = useState<Resource[]>([]);
   const [devCardPlayedThisTurn, setDevCardPlayedThisTurn] = useState(false);
@@ -673,7 +674,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setYearOfPlentyPicks([]);
     setDevCardPlayedThisTurn(false);
     setPlayerTradeOffer({}); setPlayerTradeRequest({}); setPlayerTradeResponses([]);
-    setBankTradeModalOpen(false); setPlayerTradeModalOpen(false);
+    setBankTradeModalOpen(false); setPlayerTradeModalOpen(false); setBuildModalOpen(false);
     setGame(prev => ({
       ...prev,
       currentPlayer: (prev.currentPlayer + 1) % 4,
@@ -1826,6 +1827,125 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             );
           })()}
 
+          {/* Floating build button — centered bottom of board */}
+          {game.phase === 'playing' && (() => {
+            const canBuildAnything = isMyTurn && !mustMoveRobber && !mustDiscard && game.dice
+              && (canBuildRoad || canBuildSettlement || canBuildCity || canBuildDevCard);
+            const isActive = isMyTurn && !mustMoveRobber && !mustDiscard && !!game.dice;
+            return (
+              <button
+                onClick={() => isActive && setBuildModalOpen(true)}
+                title="Build / Buy"
+                style={{
+                  position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+                  background: 'rgba(18, 12, 6, 0.88)',
+                  border: `2px solid ${canBuildAnything ? '#e67e22' : '#3a3020'}`,
+                  borderRadius: '12px', padding: '7px 14px',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
+                  cursor: isActive ? 'pointer' : 'default',
+                  zIndex: 10, backdropFilter: 'blur(4px)',
+                  boxShadow: canBuildAnything ? '0 0 12px rgba(230,126,34,0.35)' : 'none',
+                  transition: 'border-color 0.3s, box-shadow 0.3s',
+                  animation: canBuildAnything ? 'floating-build-glow 1.6s ease-in-out infinite' : 'none',
+                }}
+              >
+                <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>⚒️</span>
+                <span style={{ fontSize: '0.6rem', color: isActive ? '#f0a060' : '#555', fontWeight: 600, letterSpacing: '0.02em' }}>BUILD</span>
+              </button>
+            );
+          })()}
+
+          {/* Build / Buy modal */}
+          {buildModalOpen && (() => {
+            const modalClose = () => setBuildModalOpen(false);
+            const items = [
+              {
+                id: 'road' as const,
+                icon: '🛣️',
+                name: 'Road',
+                cost: '1🌲 + 1🧱',
+                canAfford: canBuildRoad,
+                disabled: !canBuildRoad || roadBuildingRoadsLeft > 0,
+                active: buildingMode === 'road',
+                action: () => { handleBuildToggle('road'); modalClose(); },
+                label: buildingMode === 'road' ? '✓ Placing…' : 'Build',
+              },
+              {
+                id: 'settlement' as const,
+                icon: '🏠',
+                name: 'Settlement',
+                cost: '1🌲 + 1🧱 + 1🌾 + 1🐑',
+                canAfford: canBuildSettlement,
+                disabled: !canBuildSettlement,
+                active: buildingMode === 'settlement',
+                action: () => { handleBuildToggle('settlement'); modalClose(); },
+                label: buildingMode === 'settlement' ? '✓ Placing…' : 'Build',
+              },
+              {
+                id: 'city' as const,
+                icon: '🏰',
+                name: 'City',
+                cost: '2🌾 + 3⛏️',
+                canAfford: canBuildCity,
+                disabled: !canBuildCity,
+                active: buildingMode === 'city',
+                action: () => { handleBuildToggle('city'); modalClose(); },
+                label: buildingMode === 'city' ? '✓ Placing…' : 'Upgrade',
+              },
+              {
+                id: 'devcard' as const,
+                icon: '🃏',
+                name: 'Dev Card',
+                cost: '1🌾 + 1🐑 + 1⛏️',
+                canAfford: canBuildDevCard,
+                disabled: !canBuildDevCard,
+                active: false,
+                action: () => { handleBuyDevCard(); modalClose(); },
+                label: 'Buy',
+              },
+            ];
+            return (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={modalClose}>
+                <div style={{ background: '#1a2332', border: '2px solid #e67e22', borderRadius: '16px', padding: '20px', maxWidth: '400px', width: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.7)' }} onClick={e => e.stopPropagation()}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                    <h3 style={{ margin: 0, color: '#e67e22', fontSize: '1.1rem' }}>⚒️ Build / Buy</h3>
+                    <button onClick={modalClose} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '1.3rem', padding: '2px 6px' }}>✕</button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    {items.map(item => (
+                      <div key={item.id} style={{
+                        background: item.active ? '#2a3a1a' : item.canAfford ? '#1e2c3a' : '#161e28',
+                        border: `2px solid ${item.active ? '#27ae60' : item.canAfford ? '#e67e22' : '#2a3040'}`,
+                        borderRadius: '12px', padding: '16px 12px',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
+                        opacity: item.disabled && !item.active ? 0.55 : 1,
+                      }}>
+                        <span style={{ fontSize: '2.6rem', lineHeight: 1 }}>{item.icon}</span>
+                        <span style={{ fontWeight: 'bold', fontSize: '1rem', color: '#f0f0f0' }}>{item.name}</span>
+                        <span style={{ fontSize: '0.72rem', color: '#8899aa', textAlign: 'center', lineHeight: 1.4 }}>{item.cost}</span>
+                        <button
+                          onClick={item.disabled ? undefined : item.action}
+                          disabled={item.disabled}
+                          style={{
+                            marginTop: '4px', padding: '7px 18px',
+                            background: item.active ? '#27ae60' : item.canAfford ? '#e67e22' : '#2a3040',
+                            border: 'none', borderRadius: '7px',
+                            color: item.canAfford || item.active ? '#fff' : '#555',
+                            fontWeight: 'bold', fontSize: '0.88rem',
+                            cursor: item.disabled ? 'default' : 'pointer',
+                            width: '100%',
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Floating dice button — lower-left of board */}
           {game.phase === 'playing' && (() => {
             const needsRoll = isMyTurn && !game.dice && !isRolling;
@@ -2137,36 +2257,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 </div>
               )}
 
-              {/* Build buttons */}
-              <div className="build-section">
-                <h4>Build</h4>
-                <button
-                  className={`btn ${buildingMode === 'road' ? 'active' : ''} ${!canBuildRoad ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('road')} disabled={!isMyTurn || mustMoveRobber || mustDiscard || roadBuildingRoadsLeft > 0}
-                  title={!canBuildRoad ? 'Need 1🌲 1🧱' : ''}
-                >
-                  🛣️ Road {!canBuildRoad && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌲1🧱)</span>}
-                </button>
-                <button
-                  className={`btn ${buildingMode === 'settlement' ? 'active' : ''} ${!canBuildSettlement ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('settlement')} disabled={!isMyTurn || mustMoveRobber || mustDiscard}
-                >
-                  🏠 Settlement {!canBuildSettlement && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌲1🧱1🌾1🐑)</span>}
-                </button>
-                <button
-                  className={`btn ${buildingMode === 'city' ? 'active' : ''} ${!canBuildCity ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('city')} disabled={!isMyTurn || mustMoveRobber || mustDiscard}
-                >
-                  🏰 City {!canBuildCity && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 2🌾3⛏️)</span>}
-                </button>
-                <button
-                  className={`btn ${!canBuildDevCard ? 'cannot-afford' : ''}`}
-                  onClick={handleBuyDevCard} disabled={!isMyTurn || mustMoveRobber || mustDiscard || !canBuildDevCard}
-                  title="Need 1🌾 1🐑 1⛏️"
-                >
-                  🃏 Dev Card {!canBuildDevCard && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌾1🐑1⛏️)</span>}
-                </button>
-              </div>
 
 
               <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isMyTurn || mustMoveRobber || mustDiscard} style={{ marginTop: '10px' }}>

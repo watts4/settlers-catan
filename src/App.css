@@ -134,6 +134,11 @@ body {
   font-size: 1.35rem;
 }
 
+@keyframes floating-build-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(230,126,34,0.35), 0 0 18px rgba(230,126,34,0.12); }
+  50%       { box-shadow: 0 0 20px rgba(230,126,34,0.75), 0 0 40px rgba(230,126,34,0.28); }
+}
+
 /* Floating dev card icon — top-right of board */
 .floating-devcard-btn {
   position: absolute;
