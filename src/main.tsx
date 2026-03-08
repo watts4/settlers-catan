@@ -5,6 +5,7 @@ import App from './App.tsx';
 import LandingPage from './LandingPage.tsx';
 import GameLobby from './GameLobby.tsx';
 import type { MultiplayerConfig } from './types.ts';
+import type { GameState } from './types.ts';
 import type { GameRoomData } from './useGameRoom.ts';
 import {
   createGameRoom,
@@ -22,7 +23,13 @@ type Screen = 'landing' | 'lobby' | 'game';
 function Root() {
   const [screen, setScreen] = useState<Screen>('landing');
   const [multiplayerConfig, setMultiplayerConfig] = useState<MultiplayerConfig | undefined>();
+  const [soloInitialState, setSoloInitialState] = useState<GameState | undefined>();
   const savedGame = useSavedGame();
+
+  // Check for solo save in localStorage
+  const [hasSoloSave, setHasSoloSave] = useState(() => {
+    return !!localStorage.getItem('catan_solo_save');
+  });
 
   // URL-based room code (for invite links: ?room=XKCD42)
   const [initialRoomCode] = useState(() => {
@@ -44,6 +51,24 @@ function Root() {
   }, [roomData, screen, multiplayerConfig]);
 
   const handlePlaySolo = () => {
+    // Start fresh — clear any existing save
+    localStorage.removeItem('catan_solo_save');
+    setHasSoloSave(false);
+    setSoloInitialState(undefined);
+    setMultiplayerConfig(undefined);
+    setScreen('game');
+  };
+
+  const handleResumeSolo = () => {
+    try {
+      const raw = localStorage.getItem('catan_solo_save');
+      if (raw) {
+        const saved = JSON.parse(raw) as GameState;
+        setSoloInitialState(saved);
+      }
+    } catch {
+      setSoloInitialState(undefined);
+    }
     setMultiplayerConfig(undefined);
     setScreen('game');
   };
@@ -84,14 +109,12 @@ function Root() {
   };
 
   const handleRejoinGame = async (roomId: string, slot: number) => {
-    // Rejoin as the saved slot; host is slot 0
     setMultiplayerConfig({ roomId, mySlot: slot, isHost: slot === 0, playerName: 'Player' });
     setScreen('lobby');
   };
 
   const handleStartGame = async () => {
     if (!multiplayerConfig || !roomData) return;
-    // Build player configs from room data
     const playerConfigs: PlayerConfig[] = [0, 1, 2, 3].map(slot => {
       const p = roomData.players.find(pl => pl.slot === slot);
       return {
@@ -109,6 +132,8 @@ function Root() {
       await leaveGameRoom(multiplayerConfig.roomId, multiplayerConfig.mySlot);
     }
     setMultiplayerConfig(undefined);
+    setSoloInitialState(undefined);
+    setHasSoloSave(!!localStorage.getItem('catan_solo_save'));
     setScreen('landing');
   };
 
@@ -116,6 +141,8 @@ function Root() {
     return (
       <LandingPage
         onPlaySolo={handlePlaySolo}
+        onResumeSolo={handleResumeSolo}
+        hasSoloSave={hasSoloSave}
         onCreateMultiplayer={handleCreateMultiplayer}
         onJoinMultiplayer={handleJoinMultiplayer}
         savedGame={savedGame}
@@ -139,7 +166,6 @@ function Root() {
   }
 
   if (screen === 'lobby' && !roomData) {
-    // Still loading lobby data
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0d1117', color: '#fff', fontSize: '1.2rem' }}>
         ⏳ Connecting to game room…
@@ -150,6 +176,7 @@ function Root() {
   return (
     <App
       multiplayerConfig={multiplayerConfig}
+      initialGameState={soloInitialState}
       onLeaveGame={handleLeaveGame}
     />
   );

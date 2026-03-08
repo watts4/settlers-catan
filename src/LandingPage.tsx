@@ -10,6 +10,8 @@ import { auth } from './firebase';
 
 interface LandingPageProps {
   onPlaySolo: () => void;
+  onResumeSolo: () => void;
+  hasSoloSave: boolean;
   onCreateMultiplayer: (playerName: string) => void;
   onJoinMultiplayer: (roomCode: string, playerName: string) => void;
   savedGame: { roomId: string; slot: number } | null;
@@ -33,6 +35,8 @@ const COLORS = {
 
 export default function LandingPage({
   onPlaySolo,
+  onResumeSolo,
+  hasSoloSave,
   onCreateMultiplayer,
   onJoinMultiplayer,
   savedGame,
@@ -281,39 +285,63 @@ export default function LandingPage({
         }}
       >
         {/* Solo card */}
-        <button
-          onClick={onPlaySolo}
-          style={{
-            background: `linear-gradient(135deg, #1a2a3a, #0f1f30)`,
-            border: `2px solid ${COLORS.gold}55`,
-            borderRadius: '16px',
-            padding: '28px 20px',
-            cursor: 'pointer',
-            color: COLORS.white,
-            textAlign: 'center',
-            transition: 'all 0.2s',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '10px',
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.border = `2px solid ${COLORS.gold}`;
-            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.border = `2px solid ${COLORS.gold}55`;
-            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
-          }}
-        >
-          <span style={{ fontSize: '36px' }}>🤖</span>
-          <span style={{ fontSize: '18px', fontWeight: 700, color: COLORS.gold }}>
-            Play Solo
-          </span>
-          <span style={{ fontSize: '13px', color: COLORS.muted }}>
-            Play against AI opponents on this device
-          </span>
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {hasSoloSave && (
+            <button
+              onClick={onResumeSolo}
+              style={{
+                background: `linear-gradient(135deg, #2a3a1a, #1a2a0a)`,
+                border: `2px solid ${COLORS.green}`,
+                borderRadius: '12px',
+                padding: '14px 20px',
+                cursor: 'pointer',
+                color: COLORS.white,
+                textAlign: 'center',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                fontWeight: 700,
+                fontSize: '15px',
+              }}
+            >
+              <span>▶️</span> Resume Solo Game
+            </button>
+          )}
+          <button
+            onClick={onPlaySolo}
+            style={{
+              background: `linear-gradient(135deg, #1a2a3a, #0f1f30)`,
+              border: `2px solid ${COLORS.gold}55`,
+              borderRadius: '16px',
+              padding: hasSoloSave ? '16px 20px' : '28px 20px',
+              cursor: 'pointer',
+              color: COLORS.white,
+              textAlign: 'center',
+              transition: 'all 0.2s',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.border = `2px solid ${COLORS.gold}`;
+              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.border = `2px solid ${COLORS.gold}55`;
+              (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+            }}
+          >
+            <span style={{ fontSize: '36px' }}>🤖</span>
+            <span style={{ fontSize: '18px', fontWeight: 700, color: COLORS.gold }}>
+              {hasSoloSave ? 'New Solo Game' : 'Play Solo'}
+            </span>
+            <span style={{ fontSize: '13px', color: COLORS.muted }}>
+              {hasSoloSave ? 'Start fresh against AI' : 'Play against AI opponents on this device'}
+            </span>
+          </button>
+        </div>
 
         {/* Create multiplayer card */}
         <button

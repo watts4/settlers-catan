@@ -192,12 +192,22 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [roadBuildingRoadsLeft, setRoadBuildingRoadsLeft] = useState(0);
   const [yearOfPlentyPicks, setYearOfPlentyPicks] = useState<Resource[]>([]);
   const [devCardPlayedThisTurn, setDevCardPlayedThisTurn] = useState(false);
+  // Tracks how many of each dev card type the player owned at the START of their turn.
+  // Cards bought mid-turn are not in this snapshot and therefore can't be played.
+  const [devHandAtTurnStart, setDevHandAtTurnStart] = useState<Record<string, number>>({});
   const [showPlayerTrade, setShowPlayerTrade] = useState(false);
   const [playerTradeOffer, setPlayerTradeOffer] = useState<Partial<Record<Resource, number>>>({});
   const [playerTradeRequest, setPlayerTradeRequest] = useState<Partial<Record<Resource, number>>>({});
   const [playerTradeResponses, setPlayerTradeResponses] = useState<{ playerId: number; accepts: boolean }[]>([]);
   const [isRolling, setIsRolling] = useState(false);
   const [animDice, setAnimDice] = useState<[number, number]>([1, 1]);
+  // AI-initiated trade proposal — shown to human during AI's turn
+  const [aiTradeProposal, setAiTradeProposal] = useState<{
+    fromPlayer: number;
+    offering: Partial<Record<Resource, number>>;
+    requesting: Partial<Record<Resource, number>>;
+    pendingState: GameState;
+  } | null>(null);
 
   // ── Multiplayer sync ────────────────────────────────────────────────────────
   const lastSyncId = useRef('');
@@ -266,6 +276,18 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   // True while the human must move the robber or choose who to steal from
   const mustMoveRobber = robbingMode || stealCandidates.length > 0;
 
+  // ── Solo game persistence ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (multiplayerConfig) return; // only for solo
+    if (game.phase === 'gameOver') {
+      localStorage.removeItem('catan_solo_save');
+      return;
+    }
+    try {
+      localStorage.setItem('catan_solo_save', JSON.stringify(game));
+    } catch { /* storage full — ignore */ }
+  }, [game, multiplayerConfig]);
+
   // Clear build error after 3 seconds
   useEffect(() => {
     if (!buildError) return;
@@ -280,6 +302,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       setDevCardMode(null);
       setRoadBuildingRoadsLeft(0);
       setYearOfPlentyPicks([]);
+      // Snapshot the hand so newly-bought cards are blocked from play this turn
+      const hand = game.players[game.currentPlayer].devCards;
+      const counts: Record<string, number> = {};
+      for (const c of hand) counts[c] = (counts[c] ?? 0) + 1;
+      setDevHandAtTurnStart(counts);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.currentPlayer]);
@@ -308,10 +335,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     const shouldHandleAI = multiplayerConfig ? multiplayerConfig.isHost : true;
     const aiPlayerId = game.currentPlayer;
     if (game.phase !== 'playing' || game.players[aiPlayerId]?.isHuman || !shouldHandleAI) return;
+    if (aiTradeProposal) return; // already waiting for human response
 
     const timer = setTimeout(() => {
       setGame(prev => {
-        // Bail if the turn already moved on (e.g. another update raced in)
         if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) return prev;
 
         // Roll dice
@@ -327,14 +354,31 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         }
         addLog(afterRoll, `${prev.players[aiPlayerId].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
 
-        // Build decisions + advance turn
+        // ~45% chance the AI proposes a trade with a human player before acting
+        const humanPlayers = afterRoll.players.filter(p => p.isHuman);
+        if (humanPlayers.length > 0 && Math.random() < 0.45) {
+          const aiPlayer = afterRoll.players[aiPlayerId];
+          const TRADEABLE = (['wood', 'brick', 'sheep', 'wheat', 'ore'] as Resource[]);
+          // Find resources the AI has excess of (>= 2) and one it needs (0 or 1)
+          const excess = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) >= 2);
+          const needs = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) <= 1);
+          if (excess.length > 0 && needs.length > 0) {
+            // Pick most excessive to offer, most needed to request
+            const offer = excess.sort((a, b) => (aiPlayer.resources[b] || 0) - (aiPlayer.resources[a] || 0))[0];
+            const request = needs.sort((a, b) => (aiPlayer.resources[a] || 0) - (aiPlayer.resources[b] || 0))[0];
+            // Propose: AI offers 1, requests 1 (players can negotiate in real Catan but we keep it 1:1)
+            setAiTradeProposal({ fromPlayer: aiPlayerId, offering: { [offer]: 1 }, requesting: { [request]: 1 }, pendingState: afterRoll });
+            return afterRoll; // Pause — don't complete turn yet, wait for human response
+          }
+        }
+
         return aiDoFullTurn(afterRoll);
       });
     }, 900);
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game.currentPlayer, game.phase]);
+  }, [game.currentPlayer, game.phase, aiTradeProposal]);
 
   // ── Core placement ────────────────────────────────────────────────────────
 
@@ -563,8 +607,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const handleNewGame = () => {
     setBuildingMode(null); setTradeOffer({}); setTradeRequest({}); setBuildError(null);
     setDevCardMode(null); setRoadBuildingRoadsLeft(0); setYearOfPlentyPicks([]);
-    setDevCardPlayedThisTurn(false);
+    setDevCardPlayedThisTurn(false); setDevHandAtTurnStart({});
     setShowPlayerTrade(false); setPlayerTradeOffer({}); setPlayerTradeRequest({}); setPlayerTradeResponses([]);
+    setAiTradeProposal(null);
+    localStorage.removeItem('catan_solo_save');
     setGame(createInitialGameState());
   };
 
@@ -644,6 +690,44 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       return newGame;
     });
     setShowPlayerTrade(false); setPlayerTradeOffer({}); setPlayerTradeRequest({}); setPlayerTradeResponses([]);
+  };
+
+  const handleAcceptAiTrade = () => {
+    if (!aiTradeProposal) return;
+    const { fromPlayer, offering, requesting, pendingState } = aiTradeProposal;
+    setAiTradeProposal(null);
+    // Apply the trade: human gives `requesting`, AI gives `offering`
+    setGame(() => {
+      const humanId = pendingState.players.find(p => p.isHuman)?.id ?? 0;
+      const traded: GameState = {
+        ...pendingState,
+        players: pendingState.players.map(p => {
+          const res = { ...p.resources };
+          if (p.id === fromPlayer) {
+            // AI loses what it offered, gains what it requested
+            (Object.keys(offering) as Resource[]).forEach(r => { res[r] = (res[r] || 0) - (offering[r] || 0); });
+            (Object.keys(requesting) as Resource[]).forEach(r => { res[r] = (res[r] || 0) + (requesting[r] || 0); });
+          } else if (p.id === humanId) {
+            // Human gains what AI offered, loses what AI requested
+            (Object.keys(offering) as Resource[]).forEach(r => { res[r] = (res[r] || 0) + (offering[r] || 0); });
+            (Object.keys(requesting) as Resource[]).forEach(r => { res[r] = (res[r] || 0) - (requesting[r] || 0); });
+          }
+          return { ...p, resources: res };
+        }),
+      };
+      const aiName = pendingState.players[fromPlayer].name;
+      const giveStr = (Object.keys(offering) as Resource[]).map(r => `${offering[r]}${HEX_ICON[r as Resource]}`).join(' ');
+      const getStr = (Object.keys(requesting) as Resource[]).map(r => `${requesting[r]}${HEX_ICON[r as Resource]}`).join(' ');
+      addLog(traded, `${aiName} traded ${giveStr} with you for ${getStr}`);
+      return aiDoFullTurn(traded);
+    });
+  };
+
+  const handleDeclineAiTrade = () => {
+    if (!aiTradeProposal) return;
+    const { pendingState } = aiTradeProposal;
+    setAiTradeProposal(null);
+    setGame(() => aiDoFullTurn(pendingState));
   };
 
   const handleBuyDevCard = () => {
@@ -1274,6 +1358,47 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             <>
               <h3>Actions</h3>
 
+              {/* AI Trade Proposal — shown during AI's turn */}
+              {aiTradeProposal && (
+                <div style={{ padding: '14px', background: '#1a3a2a', border: '2px solid #27ae60', borderRadius: '10px', marginBottom: '12px' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#27ae60' }}>
+                    🤝 {game.players[aiTradeProposal.fromPlayer].name} wants to trade!
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ background: '#253535', borderRadius: '6px', padding: '6px 10px' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '2px' }}>They give you:</div>
+                      <div style={{ fontSize: '1.1rem' }}>
+                        {(Object.keys(aiTradeProposal.offering) as Resource[]).map(r => `${aiTradeProposal.offering[r]}× ${HEX_ICON[r]}`).join(' ')}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '1.2rem', color: '#aaa' }}>⇄</div>
+                    <div style={{ background: '#353525', borderRadius: '6px', padding: '6px 10px' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '2px' }}>You give them:</div>
+                      <div style={{ fontSize: '1.1rem' }}>
+                        {(Object.keys(aiTradeProposal.requesting) as Resource[]).map(r => `${aiTradeProposal.requesting[r]}× ${HEX_ICON[r]}`).join(' ')}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Check if human can actually afford this trade */}
+                  {(() => {
+                    const humanPlayer = game.players.find(p => p.isHuman && (multiplayerConfig ? p.id === multiplayerConfig.mySlot : true));
+                    const canAffordTrade = humanPlayer && (Object.keys(aiTradeProposal.requesting) as Resource[]).every(r => (humanPlayer.resources[r] || 0) >= (aiTradeProposal.requesting[r] || 0));
+                    return (
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={handleAcceptAiTrade} disabled={!canAffordTrade}
+                          style={{ flex: 1, padding: '8px', background: canAffordTrade ? '#27ae60' : '#555', border: 'none', borderRadius: '6px', color: '#fff', cursor: canAffordTrade ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
+                          ✓ Accept
+                        </button>
+                        <button onClick={handleDeclineAiTrade}
+                          style={{ flex: 1, padding: '8px', background: '#7b1a1a', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>
+                          ✗ Decline
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
               {/* Dev Cards Panel — shown first so it's always visible */}
               {isMyTurn && !isSetup && (
                 <div style={{ background: '#1a2a3a', border: '2px solid #8b6914', borderRadius: '8px', padding: '10px', marginBottom: '10px' }}>
@@ -1321,7 +1446,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                       {(['knight', 'road', 'plenty', 'monopoly', 'victory'] as const).map(cardType => {
                         const count = currentPlayer.devCards.filter(c => c === cardType).length;
                         if (count === 0) return null;
-                        const canPlay = cardType !== 'victory' && !devCardPlayedThisTurn && !mustMoveRobber && game.phase === 'playing';
+                        // Can only play cards that existed at the start of this turn (not bought this turn)
+                        const canPlay = cardType !== 'victory' && !devCardPlayedThisTurn && !mustMoveRobber && game.phase === 'playing' && (devHandAtTurnStart[cardType] ?? 0) > 0;
                         const cardLabel: Record<string, string> = {
                           knight: '⚔️ Knight',
                           road: '🛣️ Road Building',
@@ -1359,6 +1485,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                               )}
                               {cardType !== 'victory' && devCardPlayedThisTurn && (
                                 <span style={{ fontSize: '0.75rem', color: '#888' }}>used this turn</span>
+                              )}
+                              {cardType !== 'victory' && !devCardPlayedThisTurn && (devHandAtTurnStart[cardType] ?? 0) === 0 && count > 0 && (
+                                <span style={{ fontSize: '0.75rem', color: '#888' }}>next turn</span>
                               )}
                             </div>
                             <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '2px' }}>{cardDesc[cardType]}</div>

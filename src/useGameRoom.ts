@@ -142,7 +142,7 @@ export async function createGameRoom(
       {
         slot: 0,
         name: playerName,
-        uid: uid ?? undefined,
+        ...(uid ? { uid } : {}),
         sessionId,
         isHuman: true,
         joinedAt: Date.now(),
@@ -186,7 +186,7 @@ export async function joinGameRoom(
   const newPlayer: GameRoomPlayer = {
     slot: newSlot,
     name: playerName,
-    uid: uid ?? undefined,
+    ...(uid ? { uid } : {}),
     sessionId,
     isHuman: true,
     joinedAt: Date.now(),
