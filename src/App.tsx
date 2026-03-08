@@ -136,7 +136,7 @@ const RESOURCES: Resource[] = ['wood', 'brick', 'sheep', 'wheat', 'ore'];
 
 // Icons used in UI (player cards, build buttons, trade, log)
 const HEX_ICON: Record<Resource, string> = {
-  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '⛏️', desert: '🏜️', gold: '💰',
+  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '🪨', desert: '🏜️', gold: '💰',
 };
 
 // Large illustrated emoji shown on each hex tile — no text labels, just visual art
@@ -145,7 +145,7 @@ const HEX_TILE_EMOJI: Record<Resource, string[]> = {
   brick:  ['🧱', '⛰️'],        // brick + hill
   sheep:  ['🐑', '🌿'],        // sheep on grass
   wheat:  ['🌾', '🌾'],        // wheat sheaves
-  ore:    ['⛰️', '⛏️'],        // mountains + pickaxe
+  ore:    ['⛰️', '🪨'],        // mountains + stone
   desert: ['🏜️'],              // desert
   gold:   ['💰'],
 };
@@ -167,7 +167,7 @@ const PROBABILITY_DOTS: Record<number, number> = {
 };
 
 const PORT_ICON: Record<string, string> = {
-  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '⛏️', generic: '⚓',
+  wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '🪨', generic: '⚓',
 };
 
 // ── App ───────────────────────────────────────────────────────────────────────
@@ -879,9 +879,20 @@ function App() {
     game.board.edges.flatMap(edge =>
       Object.entries(edge.roads).filter(([, t]) => t).map(([pid]) => {
         const p = game.players[parseInt(pid)];
+        const x1 = edge.x1, y1 = edge.y1, x2 = edge.x2, y2 = edge.y2;
         return (
-          <line key={`${edge.id}-${pid}`} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2}
-            stroke={p.color} strokeWidth="8" strokeLinecap="round" />
+          <g key={`${edge.id}-${pid}`}>
+            {/* Dark border for depth */}
+            <line x1={x1} y1={y1} x2={x2} y2={y2}
+              stroke="rgba(0,0,0,0.55)" strokeWidth="11" strokeLinecap="round" />
+            {/* Main road color */}
+            <line x1={x1} y1={y1} x2={x2} y2={y2}
+              stroke={p.color} strokeWidth="8" strokeLinecap="round" />
+            {/* Dashed highlight — gives a plank/cobblestone texture */}
+            <line x1={x1} y1={y1} x2={x2} y2={y2}
+              stroke="rgba(255,255,255,0.22)" strokeWidth="3"
+              strokeLinecap="round" strokeDasharray="5 7" />
+          </g>
         );
       })
     );
