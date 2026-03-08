@@ -414,6 +414,13 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.currentPlayer, game.phase, aiTradeProposal]);
 
+  // Auto-open player trade modal when an AI trade proposal arrives
+  useEffect(() => {
+    if (aiTradeProposal) {
+      setPlayerTradeModalOpen(true);
+    }
+  }, [aiTradeProposal]);
+
   // ── Core placement ────────────────────────────────────────────────────────
 
   function doPlaceSettlement(prev: GameState, vertexId: string) {
@@ -1609,9 +1616,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           {/* Floating trade buttons — lower-right of board */}
           {game.phase === 'playing' && (() => {
             const canTrade = isMyTurn && !!game.dice && !mustMoveRobber && !mustDiscard;
-            const btnStyle = (active: boolean): React.CSSProperties => ({
+            const hasIncomingTrade = !!aiTradeProposal;
+            const playersBtnActive = canTrade || hasIncomingTrade;
+            const playersGlow = hasIncomingTrade && !playerTradeModalOpen;
+            const btnStyle = (active: boolean, glow = false): React.CSSProperties => ({
               background: 'rgba(18, 12, 6, 0.88)',
-              border: `2px solid ${active ? '#27ae60' : '#3a4a3a'}`,
+              border: `2px solid ${glow ? '#ffd700' : active ? '#27ae60' : '#3a4a3a'}`,
               borderRadius: '12px',
               padding: '7px 11px',
               display: 'flex',
@@ -1621,13 +1631,14 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               cursor: active ? 'pointer' : 'default',
               backdropFilter: 'blur(4px)',
               transition: 'border-color 0.3s',
-              boxShadow: active ? '0 0 10px rgba(39,174,96,0.3)' : 'none',
+              animation: glow ? 'floating-dice-glow 1.4s ease-in-out infinite' : 'none',
+              boxShadow: glow ? undefined : active ? '0 0 10px rgba(39,174,96,0.3)' : 'none',
             });
             return (
               <div style={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', gap: '8px', zIndex: 10 }}>
-                <button style={btnStyle(canTrade)} onClick={() => canTrade && setPlayerTradeModalOpen(true)} title="Trade with Players">
+                <button style={btnStyle(playersBtnActive, playersGlow)} onClick={() => playersBtnActive && setPlayerTradeModalOpen(true)} title={hasIncomingTrade ? 'Incoming trade offer!' : 'Trade with Players'}>
                   <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>🤝</span>
-                  <span style={{ fontSize: '0.6rem', color: canTrade ? '#7dde9a' : '#555', fontWeight: 600, letterSpacing: '0.02em' }}>PLAYERS</span>
+                  <span style={{ fontSize: '0.6rem', color: playersGlow ? '#ffd700' : playersBtnActive ? '#7dde9a' : '#555', fontWeight: 600, letterSpacing: '0.02em' }}>PLAYERS</span>
                 </button>
                 <button style={btnStyle(canTrade)} onClick={() => canTrade && setBankTradeModalOpen(true)} title="Trade with Bank">
                   <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>🏦</span>
@@ -1719,7 +1730,14 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
           {/* Player Trade Modal */}
           {playerTradeModalOpen && (() => {
-            const modalClose = () => { setPlayerTradeModalOpen(false); setPlayerTradeOffer({}); setPlayerTradeRequest({}); setPlayerTradeResponses([]); };
+            const modalClose = () => {
+              setPlayerTradeModalOpen(false);
+              setPlayerTradeOffer({});
+              setPlayerTradeRequest({});
+              setPlayerTradeResponses([]);
+              // Don't auto-decline — keep glow so user can reopen
+            };
+            const isIncoming = !!aiTradeProposal;
             const tapCell = (r: Resource, count: number, onTap: () => void, accent: string) => (
               <div key={r} onClick={onTap} style={{ flex: 1, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: count > 0 ? (accent === '#e67e22' ? '#2a1a08' : '#0a2218') : '#182030', border: `2px solid ${count > 0 ? accent : '#2a3a4a'}`, borderRadius: '12px', padding: '10px 4px', userSelect: 'none' }}>
                 <span style={{ fontSize: '2.4rem', lineHeight: 1 }}>{HEX_ICON[r]}</span>
@@ -1737,7 +1755,148 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                     <button onClick={modalClose} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '1.3rem', padding: '2px 6px' }}>✕</button>
                   </div>
 
-                  {showingResponses ? (
+                  {isIncoming ? (
+                    /* ── Incoming trade offer from AI ── */
+                    (() => {
+                      const aiPlayer = game.players[aiTradeProposal!.fromPlayer];
+                      const humanPlayer = game.players.find(p => p.isHuman && (multiplayerConfig ? p.id === multiplayerConfig.mySlot : true));
+                      const btnBase: React.CSSProperties = { border: 'none', borderRadius: '8px', color: '#fff', cursor: 'pointer', fontWeight: 'bold', padding: '10px', fontSize: '0.9rem' };
+
+                      // Counter result view
+                      if (counterResult) return (
+                        <div>
+                          <div style={{ fontWeight: 'bold', marginBottom: '14px', fontSize: '1rem', color: counterResult === 'accepted' ? '#27ae60' : '#e74c3c', textAlign: 'center' }}>
+                            {counterResult === 'accepted' ? '✅ Counter accepted!' : '❌ Counter declined'}
+                          </div>
+                          {counterResult === 'accepted' ? (
+                            <button onClick={handleExecuteCounter} style={{ ...btnBase, background: '#27ae60', width: '100%' }}>
+                              ✓ Execute Trade
+                            </button>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <button onClick={() => { setCounterMode(true); setCounterResult(null); }} style={{ ...btnBase, background: '#2a5a8a', width: '100%' }}>
+                                ↩ Try Different Counter
+                              </button>
+                              <button onClick={handleBackToOriginal} style={{ ...btnBase, background: '#4a4a20', width: '100%' }}>
+                                See Original Offer
+                              </button>
+                              <button onClick={() => { handleDeclineAiTrade(); setPlayerTradeModalOpen(false); }} style={{ ...btnBase, background: '#7b1a1a', width: '100%' }}>
+                                ✗ Decline
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+
+                      // Counter editing mode
+                      if (counterMode) {
+                        const totalCounterGive = RESOURCES.reduce((s, r) => s + (counterOffering[r] || 0), 0);
+                        const totalCounterReceive = RESOURCES.reduce((s, r) => s + (counterRequesting[r] || 0), 0);
+                        const humanCanAffordCounter = humanPlayer && RESOURCES.every(r => (humanPlayer.resources[r] || 0) >= (counterRequesting[r] || 0));
+                        const tapCellCounter = (r: Resource, count: number, onTap: () => void, accent: string) => (
+                          <div key={r} onClick={onTap} style={{ flex: 1, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: count > 0 ? (accent === '#e67e22' ? '#2a1a08' : '#0a2218') : '#182030', border: `2px solid ${count > 0 ? accent : '#2a3a4a'}`, borderRadius: '12px', padding: '10px 4px', userSelect: 'none' }}>
+                            <span style={{ fontSize: '2.4rem', lineHeight: 1 }}>{HEX_ICON[r]}</span>
+                            <span style={{ fontSize: '1.15rem', fontWeight: 'bold', color: count > 0 ? accent : '#333', minHeight: '1.4em', lineHeight: 1 }}>{count > 0 ? `+${count}` : ''}</span>
+                          </div>
+                        );
+                        return (
+                          <div>
+                            <div style={{ fontWeight: 'bold', marginBottom: '12px', color: '#7ab8e8', fontSize: '0.95rem' }}>
+                              📝 Counter-Offer to {aiPlayer.name}
+                            </div>
+
+                            <div style={{ fontSize: '0.7rem', color: '#8899aa', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>They Give You</div>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                              {RESOURCES.map(r => {
+                                const val = counterOffering[r] || 0;
+                                const aiHas = aiPlayer.resources[r] || 0;
+                                return tapCellCounter(r, val, () => { if (val < aiHas) setCounterOffering(p => ({ ...p, [r]: val + 1 })); }, '#27ae60');
+                              })}
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                              <div style={{ flex: 1, height: '1px', background: '#2a3a4a' }} />
+                              {(totalCounterGive > 0 || totalCounterReceive > 0) && (
+                                <button onClick={() => { setCounterOffering({}); setCounterRequesting({}); }}
+                                  style={{ padding: '4px 12px', background: 'none', border: '1px solid #555', borderRadius: '6px', color: '#aaa', cursor: 'pointer', fontSize: '0.75rem' }}>
+                                  ✕ Clear
+                                </button>
+                              )}
+                              <div style={{ flex: 1, height: '1px', background: '#2a3a4a' }} />
+                            </div>
+
+                            <div style={{ fontSize: '0.7rem', color: '#8899aa', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase' }}>You Give</div>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+                              {RESOURCES.map(r => {
+                                const val = counterRequesting[r] || 0;
+                                const youHave = humanPlayer?.resources[r] || 0;
+                                return tapCellCounter(r, val, () => { if (val < youHave) setCounterRequesting(p => ({ ...p, [r]: val + 1 })); }, '#e67e22');
+                              })}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <button onClick={handleSendCounter}
+                                disabled={totalCounterGive === 0 || totalCounterReceive === 0 || !humanCanAffordCounter}
+                                style={{ ...btnBase, flex: 2, background: (totalCounterGive > 0 && totalCounterReceive > 0 && humanCanAffordCounter) ? '#2a5a8a' : '#333' }}>
+                                📤 Send Counter
+                              </button>
+                              <button onClick={handleBackToOriginal} style={{ ...btnBase, flex: 1, background: '#444' }}>
+                                ← Back
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // Original offer view
+                      const canAffordOriginal = humanPlayer && RESOURCES.every(r => (humanPlayer.resources[r] || 0) >= (aiTradeProposal!.requesting[r] || 0));
+                      return (
+                        <div>
+                          <div style={{ fontWeight: 'bold', marginBottom: '14px', color: '#27ae60', fontSize: '1rem' }}>
+                            {aiPlayer.name} wants to trade!
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                            <div style={{ flex: 1, background: '#0a2218', border: '1px solid #27ae6055', borderRadius: '12px', padding: '12px 10px', textAlign: 'center' }}>
+                              <div style={{ fontSize: '0.65rem', color: '#8899aa', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase' }}>They Give You</div>
+                              <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                                {RESOURCES.filter(r => (aiTradeProposal!.offering[r] || 0) > 0).map(r => (
+                                  <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                    <span style={{ fontSize: '2rem' }}>{HEX_ICON[r]}</span>
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#27ae60' }}>+{aiTradeProposal!.offering[r]}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            <div style={{ flex: 1, background: '#2a1a08', border: '1px solid #e67e2255', borderRadius: '12px', padding: '12px 10px', textAlign: 'center' }}>
+                              <div style={{ fontSize: '0.65rem', color: '#8899aa', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase' }}>You Give</div>
+                              <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                                {RESOURCES.filter(r => (aiTradeProposal!.requesting[r] || 0) > 0).map(r => (
+                                  <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                    <span style={{ fontSize: '2rem' }}>{HEX_ICON[r]}</span>
+                                    <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#e67e22' }}>+{aiTradeProposal!.requesting[r]}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button onClick={() => { handleAcceptAiTrade(); setPlayerTradeModalOpen(false); }} disabled={!canAffordOriginal}
+                              style={{ ...btnBase, flex: 1, background: canAffordOriginal ? '#27ae60' : '#555', cursor: canAffordOriginal ? 'pointer' : 'not-allowed' }}>
+                              ✓ Accept
+                            </button>
+                            <button onClick={handleStartCounter} style={{ ...btnBase, flex: 1, background: '#2a5a8a' }}>
+                              ✏️ Counter
+                            </button>
+                            <button onClick={() => { handleDeclineAiTrade(); setPlayerTradeModalOpen(false); }} style={{ ...btnBase, flex: 1, background: '#7b1a1a' }}>
+                              ✗ Decline
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : showingResponses ? (
                     /* Responses view */
                     <div>
                       <div style={{ fontSize: '0.82rem', color: '#aaa', marginBottom: '12px', textAlign: 'center' }}>
@@ -2004,149 +2163,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           ) : (
             <>
               <h3>Actions</h3>
-
-              {/* AI Trade Proposal — shown during AI's turn */}
-              {aiTradeProposal && (() => {
-                const aiPlayer = game.players[aiTradeProposal.fromPlayer];
-                const humanPlayer = game.players.find(p => p.isHuman && (multiplayerConfig ? p.id === multiplayerConfig.mySlot : true));
-                const btnBase: React.CSSProperties = { border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontWeight: 'bold', padding: '7px 10px', fontSize: '0.85rem' };
-
-                // ── Counter result (accepted / declined) ──────────────────
-                if (counterResult) return (
-                  <div style={{ padding: '14px', background: '#1a3a2a', border: `2px solid ${counterResult === 'accepted' ? '#27ae60' : '#e74c3c'}`, borderRadius: '10px', marginBottom: '12px' }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '1rem', color: counterResult === 'accepted' ? '#27ae60' : '#e74c3c' }}>
-                      {counterResult === 'accepted' ? '✅ Counter accepted!' : '❌ Counter declined'}
-                    </div>
-                    {counterResult === 'accepted' ? (
-                      <button onClick={handleExecuteCounter} style={{ ...btnBase, background: '#27ae60', width: '100%', padding: '10px' }}>
-                        ✓ Execute Trade
-                      </button>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        <button onClick={() => { setCounterMode(true); setCounterResult(null); }} style={{ ...btnBase, flex: 1, background: '#2a5a8a' }}>
-                          ↩ Try Different Counter
-                        </button>
-                        <button onClick={handleBackToOriginal} style={{ ...btnBase, flex: 1, background: '#4a4a20' }}>
-                          See Original Offer
-                        </button>
-                        <button onClick={handleDeclineAiTrade} style={{ ...btnBase, flex: 1, background: '#7b1a1a' }}>
-                          ✗ Decline
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-
-                // ── Counter editing mode ───────────────────────────────────
-                if (counterMode) {
-                  const totalCounterGive = RESOURCES.reduce((s, r) => s + (counterOffering[r] || 0), 0);
-                  const totalCounterReceive = RESOURCES.reduce((s, r) => s + (counterRequesting[r] || 0), 0);
-                  const humanCanAffordCounter = humanPlayer && RESOURCES.every(r => (humanPlayer.resources[r] || 0) >= (counterRequesting[r] || 0));
-                  return (
-                    <div style={{ padding: '14px', background: '#1a3a2a', border: '2px solid #2a6a8a', borderRadius: '10px', marginBottom: '12px' }}>
-                      <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#7ab8e8' }}>
-                        📝 Counter-Offer to {aiPlayer.name}
-                      </div>
-
-                      {/* AI gives you row */}
-                      <div style={{ marginBottom: '10px' }}>
-                        <div style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '5px' }}>They give you: (tap to adjust)</div>
-                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                          {RESOURCES.map(r => {
-                            const val = counterOffering[r] || 0;
-                            const aiHas = aiPlayer.resources[r] || 0;
-                            return (
-                              <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                <button onClick={() => val < aiHas && setCounterOffering(p => ({ ...p, [r]: val + 1 }))}
-                                  style={{ ...btnBase, padding: '4px 7px', background: val > 0 ? '#1a5a3a' : '#253535', border: val > 0 ? '1px solid #27ae60' : '1px solid #444', fontWeight: 'normal', opacity: val < aiHas ? 1 : 0.4 }}>
-                                  {HEX_ICON[r]}{val > 0 ? ` ×${val}` : ''}
-                                </button>
-                                {val > 0 && <button onClick={() => setCounterOffering(p => ({ ...p, [r]: val - 1 }))} style={{ ...btnBase, padding: '1px 8px', background: '#444', fontSize: '0.7rem', fontWeight: 'normal' }}>−</button>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '3px' }}>Max based on {aiPlayer.name}'s hand</div>
-                      </div>
-
-                      {/* You give row */}
-                      <div style={{ marginBottom: '12px' }}>
-                        <div style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '5px' }}>You give them: (your resources: {RESOURCES.filter(r => (humanPlayer?.resources[r] || 0) > 0).map(r => `${HEX_ICON[r]}×${humanPlayer?.resources[r]}`).join(' ') || 'none'})</div>
-                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                          {RESOURCES.map(r => {
-                            const val = counterRequesting[r] || 0;
-                            const youHave = humanPlayer?.resources[r] || 0;
-                            return (
-                              <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                                <button onClick={() => val < youHave && setCounterRequesting(p => ({ ...p, [r]: val + 1 }))}
-                                  style={{ ...btnBase, padding: '4px 7px', background: val > 0 ? '#5a3a0a' : '#353525', border: val > 0 ? '1px solid #e67e22' : '1px solid #444', fontWeight: 'normal', opacity: val < youHave ? 1 : 0.4 }}>
-                                  {HEX_ICON[r]}{val > 0 ? ` ×${val}` : ''}
-                                </button>
-                                {val > 0 && <button onClick={() => setCounterRequesting(p => ({ ...p, [r]: val - 1 }))} style={{ ...btnBase, padding: '1px 8px', background: '#444', fontSize: '0.7rem', fontWeight: 'normal' }}>−</button>}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {totalCounterGive > 0 && totalCounterReceive > 0 && (
-                        <div style={{ fontSize: '0.8rem', color: '#aaa', marginBottom: '8px', background: '#0a1a2a', padding: '6px 8px', borderRadius: '5px' }}>
-                          Summary: they give {totalCounterGive} resource{totalCounterGive !== 1 ? 's' : ''}, you give {totalCounterReceive}
-                          {totalCounterGive > totalCounterReceive * 2 && <span style={{ color: '#e74c3c' }}> — AI will likely decline (too lopsided)</span>}
-                          {totalCounterGive <= totalCounterReceive && <span style={{ color: '#27ae60' }}> — AI will likely accept</span>}
-                        </div>
-                      )}
-
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={handleSendCounter}
-                          disabled={totalCounterGive === 0 || totalCounterReceive === 0 || !humanCanAffordCounter}
-                          style={{ ...btnBase, flex: 2, padding: '8px', background: (totalCounterGive > 0 && totalCounterReceive > 0 && humanCanAffordCounter) ? '#2a5a8a' : '#333' }}>
-                          📤 Send Counter-Offer
-                        </button>
-                        <button onClick={handleBackToOriginal} style={{ ...btnBase, flex: 1, background: '#444' }}>
-                          ← Back
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // ── Original offer view ────────────────────────────────────
-                const canAffordOriginal = humanPlayer && RESOURCES.every(r => (humanPlayer.resources[r] || 0) >= (aiTradeProposal.requesting[r] || 0));
-                return (
-                  <div style={{ padding: '14px', background: '#1a3a2a', border: '2px solid #27ae60', borderRadius: '10px', marginBottom: '12px' }}>
-                    <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#27ae60' }}>
-                      🤝 {aiPlayer.name} wants to trade!
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                      <div style={{ background: '#253535', borderRadius: '6px', padding: '6px 10px', flex: 1 }}>
-                        <div style={{ fontSize: '0.72rem', color: '#aaa', marginBottom: '2px' }}>They give you:</div>
-                        <div style={{ fontSize: '1.1rem' }}>{RESOURCES.filter(r => (aiTradeProposal.offering[r] || 0) > 0).map(r => `${aiTradeProposal.offering[r]}× ${HEX_ICON[r]}`).join(' ')}</div>
-                      </div>
-                      <span style={{ color: '#aaa' }}>⇄</span>
-                      <div style={{ background: '#353525', borderRadius: '6px', padding: '6px 10px', flex: 1 }}>
-                        <div style={{ fontSize: '0.72rem', color: '#aaa', marginBottom: '2px' }}>You give them:</div>
-                        <div style={{ fontSize: '1.1rem' }}>{RESOURCES.filter(r => (aiTradeProposal.requesting[r] || 0) > 0).map(r => `${aiTradeProposal.requesting[r]}× ${HEX_ICON[r]}`).join(' ')}</div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      <button onClick={handleAcceptAiTrade} disabled={!canAffordOriginal}
-                        style={{ ...btnBase, flex: 1, background: canAffordOriginal ? '#27ae60' : '#555', cursor: canAffordOriginal ? 'pointer' : 'not-allowed' }}>
-                        ✓ Accept
-                      </button>
-                      <button onClick={handleStartCounter}
-                        style={{ ...btnBase, flex: 1, background: '#2a5a8a' }}>
-                        ✏️ Counter
-                      </button>
-                      <button onClick={handleDeclineAiTrade}
-                        style={{ ...btnBase, flex: 1, background: '#7b1a1a' }}>
-                        ✗ Decline
-                      </button>
-                    </div>
-                  </div>
-                );
-              })()}
-
 
               {/* Discard UI — shown when rolling 7 with 8+ cards */}
               {humanDiscardPending && (() => {
