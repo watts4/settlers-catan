@@ -1,5 +1,12 @@
 // Types for Settlers of Catan
 
+export interface MultiplayerConfig {
+  roomId: string;
+  mySlot: number;
+  isHost: boolean;
+  playerName: string;
+}
+
 export type Resource = 'wood' | 'brick' | 'sheep' | 'wheat' | 'ore' | 'desert' | 'gold';
 export type PieceType = 'road' | 'settlement' | 'city' | 'ship';
 

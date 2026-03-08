@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import type { GameState, Hex, Resource, Vertex, Edge, Port, Player } from './types';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import type { GameState, Hex, Resource, Vertex, Edge, Port, Player, MultiplayerConfig } from './types';
 import {
   createInitialGameState, rollDice, distributeResources,
   calculateVP, addLog, advanceSetupState, canAfford, BUILD_COSTS,
@@ -9,7 +9,17 @@ import {
 } from './gameState';
 import { aiBestSetupSettlement, aiBestSetupRoad, aiDoFullTurn } from './ai';
 import { HEX_SIZE, hexCenterPx } from './board';
+import { db } from './firebase';
+import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
 import './App.css';
+
+// ── Multiplayer Props ──────────────────────────────────────────────────────────
+
+interface AppProps {
+  multiplayerConfig?: MultiplayerConfig;
+  initialGameState?: GameState;
+  onLeaveGame?: () => void;
+}
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────
 
@@ -172,8 +182,8 @@ const PORT_ICON: Record<string, string> = {
 
 // ── App ───────────────────────────────────────────────────────────────────────
 
-function App() {
-  const [game, setGame] = useState<GameState>(createInitialGameState());
+function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
+  const [game, setGame] = useState<GameState>(initialGameState ?? createInitialGameState());
   const [buildingMode, setBuildingMode] = useState<'road' | 'settlement' | 'city' | null>(null);
   const [tradeOffer, setTradeOffer] = useState<Partial<Record<Resource, number>>>({});
   const [tradeRequest, setTradeRequest] = useState<Partial<Record<Resource, number>>>({});
@@ -189,9 +199,55 @@ function App() {
   const [isRolling, setIsRolling] = useState(false);
   const [animDice, setAnimDice] = useState<[number, number]>([1, 1]);
 
+  // ── Multiplayer sync ────────────────────────────────────────────────────────
+  const lastSyncId = useRef('');
+  const isExternalUpdate = useRef(false);
+
+  // Listen to Firestore for game state changes from other players
+  useEffect(() => {
+    if (!multiplayerConfig?.roomId) return;
+    const roomRef = doc(db, 'games', multiplayerConfig.roomId);
+    return onSnapshot(roomRef, snap => {
+      const data = snap.data();
+      if (!data?.gameState || !data?.syncId) return;
+      if (data.syncId === lastSyncId.current) return; // our own write echoing back
+      isExternalUpdate.current = true;
+      setGame(data.gameState as GameState);
+    });
+  }, [multiplayerConfig?.roomId]);
+
+  // Write game state to Firestore when it changes (skip external updates)
+  useEffect(() => {
+    if (!multiplayerConfig?.roomId) return;
+    if (isExternalUpdate.current) {
+      isExternalUpdate.current = false;
+      return;
+    }
+    const syncId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    lastSyncId.current = syncId;
+    updateDoc(doc(db, 'games', multiplayerConfig.roomId), {
+      gameState: JSON.parse(JSON.stringify(game)),
+      syncId,
+      updatedAt: Date.now(),
+    }).catch(console.error);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game]);
+
+  // Copy invite link to clipboard
+  const handleCopyInviteLink = useCallback(() => {
+    if (!multiplayerConfig?.roomId) return;
+    const url = `${window.location.origin}${window.location.pathname}?room=${multiplayerConfig.roomId}`;
+    navigator.clipboard.writeText(url).catch(() => {});
+  }, [multiplayerConfig?.roomId]);
+
+  // ── Derived state ────────────────────────────────────────────────────────────
   const currentPlayer = game.players[game.currentPlayer];
   const isSetup = game.phase === 'setup1' || game.phase === 'setup2';
   const isHumanTurn = currentPlayer?.isHuman;
+  // In multiplayer: only act when it's YOUR slot's turn. In solo: same as isHumanTurn.
+  const isMyTurn = multiplayerConfig
+    ? game.currentPlayer === multiplayerConfig.mySlot
+    : isHumanTurn;
 
   // Affordability checks (only relevant during playing phase)
   const canBuildRoad = canAfford(currentPlayer, BUILD_COSTS.road);
@@ -199,7 +255,7 @@ function App() {
   const canBuildCity = canAfford(currentPlayer, BUILD_COSTS.city);
   const canBuildDevCard = canAfford(currentPlayer, BUILD_COSTS.devCard) && game.devCardDeck.length > 0;
 
-  const tradeRatios = isHumanTurn ? getTradeRatios(game, game.currentPlayer) : {};
+  const tradeRatios = isMyTurn ? getTradeRatios(game, game.currentPlayer) : {};
   const totalOfferCredits = RESOURCES.reduce((s, r) => s + Math.floor((tradeOffer[r] || 0) / (tradeRatios[r] || 4)), 0);
   const totalRequestAmount = (Object.keys(tradeRequest) as Resource[]).reduce((s, r) => s + (tradeRequest[r] || 0), 0);
 
@@ -230,7 +286,9 @@ function App() {
 
   // ── AI auto-placement during setup (smart: score by probability) ────────────
   useEffect(() => {
-    if (!isSetup || isHumanTurn) return;
+    // In multiplayer: only host handles AI turns
+    const shouldHandleAI = multiplayerConfig ? multiplayerConfig.isHost : true;
+    if (!isSetup || isHumanTurn || !shouldHandleAI) return;
     const timeout = setTimeout(() => {
       if (game.setupStep === 'settlement') {
         const vertexId = aiBestSetupSettlement(game);
@@ -246,8 +304,10 @@ function App() {
 
   // ── AI playing turn ──────────────────────────────────────────────────────────
   useEffect(() => {
+    // In multiplayer: only host handles AI turns
+    const shouldHandleAI = multiplayerConfig ? multiplayerConfig.isHost : true;
     const aiPlayerId = game.currentPlayer;
-    if (game.phase !== 'playing' || game.players[aiPlayerId]?.isHuman) return;
+    if (game.phase !== 'playing' || game.players[aiPlayerId]?.isHuman || !shouldHandleAI) return;
 
     const timer = setTimeout(() => {
       setGame(prev => {
@@ -1002,8 +1062,8 @@ function App() {
     );
 
   const renderBuildableSpots = () => {
-    // Setup phase — auto-show spots for the human
-    if (isSetup && isHumanTurn) {
+    // Setup phase — auto-show spots for the human (my turn only in multiplayer)
+    if (isSetup && isMyTurn) {
       if (game.setupStep === 'settlement') {
         return getValidSettlementVertices(game).map(v => (
           <circle key={`spot-${v.id}`} cx={v.x} cy={v.y} r={13}
@@ -1019,7 +1079,7 @@ function App() {
     }
 
     // Playing phase manual build mode
-    if (!buildingMode || !isHumanTurn || isSetup) return null;
+    if (!buildingMode || !isMyTurn || isSetup) return null;
 
     if (buildingMode === 'settlement') {
       return getValidSettlementVertices(game).map(v => (
@@ -1049,7 +1109,7 @@ function App() {
   };
 
   const renderRobberTargets = () => {
-    if (!robbingMode || !isHumanTurn) return null;
+    if (!robbingMode || !isMyTurn) return null;
     return game.board.hexes
       .filter(h => !h.hasRobber)
       .map(hex => {
@@ -1077,9 +1137,29 @@ function App() {
     <div className="game">
       <header className="header">
         <h1>🎲 Settlers of Catan</h1>
-        <button className="btn btn-secondary" onClick={handleNewGame} style={{ maxWidth: '120px', margin: '10px auto 0' }}>
-          New Game
-        </button>
+        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap', margin: '8px 0 0' }}>
+          {!multiplayerConfig && (
+            <button className="btn btn-secondary" onClick={handleNewGame} style={{ maxWidth: '120px' }}>
+              New Game
+            </button>
+          )}
+          {multiplayerConfig && (
+            <>
+              <div style={{ background: '#1a2a3a', border: '1px solid #4a6a8a', borderRadius: '6px', padding: '4px 10px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ color: '#aaa' }}>Room:</span>
+                <span style={{ color: '#ffd700', fontWeight: 'bold', letterSpacing: '2px' }}>{multiplayerConfig.roomId}</span>
+                <button onClick={handleCopyInviteLink} title="Copy invite link" style={{ background: 'none', border: '1px solid #4a6a8a', borderRadius: '4px', color: '#aaa', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px' }}>
+                  📋 Copy Link
+                </button>
+              </div>
+              {onLeaveGame && (
+                <button onClick={onLeaveGame} style={{ padding: '4px 10px', background: '#7b1a1a', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}>
+                  ✕ Leave
+                </button>
+              )}
+            </>
+          )}
+        </div>
         <div className="turn-info">
           {isSetup
             ? `Setup ${game.phase === 'setup1' ? '(Round 1 →)' : '(Round 2 ←)'} — ${currentPlayer?.name}`
@@ -1106,7 +1186,7 @@ function App() {
               )}
             </div>
             <div className="player-resources">
-              {player.isHuman ? (
+              {(multiplayerConfig ? player.id === multiplayerConfig.mySlot : player.isHuman) ? (
                 RESOURCES.map(res => {
                   const count = player.resources[res] || 0;
                   return count > 0 ? (
@@ -1167,7 +1247,7 @@ function App() {
                   ))}
                 </div>
               </div>
-              {isHumanTurn ? (
+              {isMyTurn ? (
                 <div style={{ padding: '12px', background: '#27ae60', borderRadius: '8px', textAlign: 'center' }}>
                   <strong>
                     {game.setupStep === 'settlement'
@@ -1177,16 +1257,25 @@ function App() {
                 </div>
               ) : (
                 <div style={{ padding: '12px', background: '#2c3e50', borderRadius: '8px', textAlign: 'center', color: '#aaa' }}>
-                  ⏳ {currentPlayer?.name} is placing…
+                  {isHumanTurn && multiplayerConfig ? `⏳ Waiting for ${currentPlayer?.name}…` : `⏳ ${currentPlayer?.name} is placing…`}
                 </div>
               )}
             </>
+          ) : isHumanTurn && multiplayerConfig && !isMyTurn ? (
+            // Multiplayer: another human player's turn — show waiting message
+            <div style={{ padding: '20px', background: '#1a2a3a', borderRadius: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
+              <div style={{ color: currentPlayer.color, fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '4px' }}>
+                {currentPlayer.name}'s turn
+              </div>
+              <div style={{ color: '#aaa', fontSize: '0.9rem' }}>Waiting for their move…</div>
+            </div>
           ) : (
             <>
               <h3>Actions</h3>
 
               {/* Dev Cards Panel — shown first so it's always visible */}
-              {isHumanTurn && !isSetup && (
+              {isMyTurn && !isSetup && (
                 <div style={{ background: '#1a2a3a', border: '2px solid #8b6914', borderRadius: '8px', padding: '10px', marginBottom: '10px' }}>
                   <h4 style={{ margin: '0 0 8px 0', color: '#ffd700' }}>🃏 Dev Cards {currentPlayer.devCards.length > 0 && `(${currentPlayer.devCards.length})`}</h4>
                   {currentPlayer.devCards.length === 0 ? (
@@ -1282,7 +1371,7 @@ function App() {
               )}
 
               {/* Robber prompt */}
-              {robbingMode && isHumanTurn && (
+              {robbingMode && isMyTurn && (
                 <div style={{ padding: '12px', background: '#7b1a1a', borderRadius: '8px', marginBottom: '10px', textAlign: 'center' }}>
                   <strong>☠️ You rolled 7! Click any hex to move the robber.</strong>
                 </div>
@@ -1322,7 +1411,7 @@ function App() {
                     <span className="dice-sum">= {game.dice[0] + game.dice[1]}</span>
                   </div>
                 ) : (
-                  <button className="btn btn-primary" onClick={handleRollDice} disabled={!isHumanTurn || isRolling}>
+                  <button className="btn btn-primary" onClick={handleRollDice} disabled={!isMyTurn || isRolling}>
                     🎲 Roll Dice
                   </button>
                 )}
@@ -1351,26 +1440,26 @@ function App() {
                 <h4>Build</h4>
                 <button
                   className={`btn ${buildingMode === 'road' ? 'active' : ''} ${!canBuildRoad ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('road')} disabled={!isHumanTurn || mustMoveRobber || roadBuildingRoadsLeft > 0}
+                  onClick={() => handleBuildToggle('road')} disabled={!isMyTurn || mustMoveRobber || roadBuildingRoadsLeft > 0}
                   title={!canBuildRoad ? 'Need 1🌲 1🧱' : ''}
                 >
                   🛣️ Road {!canBuildRoad && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌲1🧱)</span>}
                 </button>
                 <button
                   className={`btn ${buildingMode === 'settlement' ? 'active' : ''} ${!canBuildSettlement ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('settlement')} disabled={!isHumanTurn || mustMoveRobber}
+                  onClick={() => handleBuildToggle('settlement')} disabled={!isMyTurn || mustMoveRobber}
                 >
                   🏠 Settlement {!canBuildSettlement && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌲1🧱1🌾1🐑)</span>}
                 </button>
                 <button
                   className={`btn ${buildingMode === 'city' ? 'active' : ''} ${!canBuildCity ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('city')} disabled={!isHumanTurn || mustMoveRobber}
+                  onClick={() => handleBuildToggle('city')} disabled={!isMyTurn || mustMoveRobber}
                 >
                   🏰 City {!canBuildCity && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 2🌾3⛏️)</span>}
                 </button>
                 <button
                   className={`btn ${!canBuildDevCard ? 'cannot-afford' : ''}`}
-                  onClick={handleBuyDevCard} disabled={!isHumanTurn || mustMoveRobber || !canBuildDevCard}
+                  onClick={handleBuyDevCard} disabled={!isMyTurn || mustMoveRobber || !canBuildDevCard}
                   title="Need 1🌾 1🐑 1⛏️"
                 >
                   🃏 Dev Card {!canBuildDevCard && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌾1🐑1⛏️)</span>}
@@ -1378,7 +1467,7 @@ function App() {
               </div>
 
               {/* Player Trade */}
-              {isHumanTurn && game.dice && !mustMoveRobber && (
+              {isMyTurn && game.dice && !mustMoveRobber && (
                 <div className="trade-section">
                   <h4>🤝 Trade with Players</h4>
                   {!showPlayerTrade && playerTradeResponses.length === 0 && (
@@ -1501,10 +1590,10 @@ function App() {
                         <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                           <button
                             onClick={() => {
-                              if (!isHumanTurn || mustMoveRobber || !canAdd) return;
+                              if (!isMyTurn || mustMoveRobber || !canAdd) return;
                               setTradeOffer(prev => ({ ...prev, [r]: offered + 1 }));
                             }}
-                            disabled={!isHumanTurn || mustMoveRobber}
+                            disabled={!isMyTurn || mustMoveRobber}
                             style={{
                               padding: '4px 7px', fontSize: '0.8rem',
                               border: offered > 0 ? '2px solid #e67e22' : '2px solid transparent',
@@ -1568,10 +1657,10 @@ function App() {
                         <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                           <button
                             onClick={() => {
-                              if (!isHumanTurn || mustMoveRobber || !canAdd) return;
+                              if (!isMyTurn || mustMoveRobber || !canAdd) return;
                               setTradeRequest(prev => ({ ...prev, [r]: requested + 1 }));
                             }}
-                            disabled={!isHumanTurn || mustMoveRobber}
+                            disabled={!isMyTurn || mustMoveRobber}
                             style={{
                               padding: '4px 7px', fontSize: '0.8rem', border: requested > 0 ? '2px solid #27ae60' : '2px solid transparent',
                               borderRadius: '5px',
@@ -1620,7 +1709,7 @@ function App() {
                 </div>
               </div>
 
-              <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isHumanTurn || mustMoveRobber} style={{ marginTop: '10px' }}>
+              <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isMyTurn || mustMoveRobber} style={{ marginTop: '10px' }}>
                 ⏭️ End Turn
               </button>
             </>

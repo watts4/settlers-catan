@@ -15,19 +15,24 @@ const DEV_CARDS = [
   'victory', 'victory', 'victory', 'victory',
 ];
 
-export function createInitialGameState(): GameState {
+export interface PlayerConfig {
+  name: string;
+  isHuman: boolean;
+}
+
+export function createInitialGameState(playerConfigs?: PlayerConfig[]): GameState {
   const { hexes, vertices, edges, ports } = generateBoard();
-  
+
   // Shuffle dev cards
   const shuffledDevCards = [...DEV_CARDS].sort(() => Math.random() - 0.5);
-  
+
   // Create players with starting resources
   const players: Player[] = [0, 1, 2, 3].map(i => ({
     id: i,
-    name: PLAYER_NAMES[i],
+    name: playerConfigs?.[i]?.name ?? PLAYER_NAMES[i],
     color: PLAYER_COLORS[i],
-    resources: { 
-      wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0 
+    resources: {
+      wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0
     },
     pieces: {
       roads: 15,
@@ -39,7 +44,7 @@ export function createInitialGameState(): GameState {
     victoryPoints: 0,
     knightsPlayed: 0,
     longestRoad: 0,
-    isHuman: i === 0,
+    isHuman: playerConfigs ? (playerConfigs[i]?.isHuman ?? false) : (i === 0),
   }));
 
   return {
