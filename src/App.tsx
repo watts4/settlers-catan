@@ -3,7 +3,7 @@ import type { GameState, Hex, Resource, Vertex, Edge, Port, Player } from './typ
 import {
   createInitialGameState, rollDice, distributeResources,
   calculateVP, addLog, advanceSetupState, canAfford, BUILD_COSTS,
-  getTotalResources, discardHalf, buyDevCard,
+  getTotalResources, discardHalf,
   updateLargestArmy, updateLongestRoad,
   playKnight, playRoadBuilding, playYearOfPlenty, playMonopoly,
 } from './gameState';
@@ -539,16 +539,29 @@ function App() {
   const handleBuyDevCard = () => {
     if (!canBuildDevCard) { setBuildError('Need 1🌾 1🐑 1⛏️ to buy a dev card'); return; }
     setGame(prev => {
+      if (prev.devCardDeck.length === 0) return prev;
+      const buyer = prev.players[prev.currentPlayer];
+      if (!canAfford(buyer, BUILD_COSTS.devCard)) return prev;
+      const newDeck = [...prev.devCardDeck];
+      const card = newDeck.pop()!;
       const newGame = {
         ...prev,
-        devCardDeck: [...prev.devCardDeck],
+        devCardDeck: newDeck,
         players: prev.players.map(p =>
           p.id !== prev.currentPlayer ? p
-            : { ...p, devCards: [...p.devCards], resources: { ...p.resources } }
+            : {
+                ...p,
+                devCards: [...p.devCards, card],
+                resources: {
+                  ...p.resources,
+                  wheat: (p.resources.wheat || 0) - 1,
+                  sheep: (p.resources.sheep || 0) - 1,
+                  ore: (p.resources.ore || 0) - 1,
+                },
+              }
         ),
       };
-      const card = buyDevCard(newGame, prev.currentPlayer);
-      if (card) addLog(newGame, `${prev.players[prev.currentPlayer].name} bought a development card`);
+      addLog(newGame, `${buyer.name} bought a development card`);
       return newGame;
     });
   };
@@ -812,9 +825,52 @@ function App() {
     game.board.vertices.flatMap(vertex =>
       Object.entries(vertex.settlements).filter(([, t]) => t).map(([pid, type]) => {
         const p = game.players[parseInt(pid)];
+        const cx = vertex.x, cy = vertex.y;
+        const key = `${vertex.id}-${pid}`;
+
+        if (type === 'city') {
+          // Castle: wide rectangular walls + 3 battlements (merlons) across the top
+          const wx = cx - 12, wy = cy - 5;  // wall top-left
+          const ww = 24, wh = 14;           // wall size
+          const mh = 6, mw = 5;             // merlon height & width
+          // 3 merlons evenly spaced across the wall top
+          const mPositions = [wx + 2, wx + 9, wx + 17];
+          return (
+            <g key={key}>
+              {/* Main wall */}
+              <rect x={wx} y={wy} width={ww} height={wh}
+                fill={p.color} stroke="#000" strokeWidth="1.5" />
+              {/* Bottom edge line for depth */}
+              <rect x={wx} y={wy + wh - 2} width={ww} height={2}
+                fill="rgba(0,0,0,0.25)" />
+              {/* Battlements */}
+              {mPositions.map((mx, i) => (
+                <rect key={i} x={mx} y={wy - mh} width={mw} height={mh}
+                  fill={p.color} stroke="#000" strokeWidth="1.5" />
+              ))}
+              {/* Arrow-slit window */}
+              <rect x={cx - 1} y={wy + 3} width={2} height={5}
+                fill="rgba(0,0,0,0.45)" />
+            </g>
+          );
+        }
+
+        // Settlement: house with pitched roof
+        const bx = cx - 8, by = cy - 4; // wall top-left
+        const bw = 16, bh = 10;         // wall size
+        const roofPts = `${bx - 3},${by} ${cx},${by - 9} ${bx + bw + 3},${by}`;
         return (
-          <circle key={`${vertex.id}-${pid}`} cx={vertex.x} cy={vertex.y}
-            r={type === 'city' ? 14 : 10} fill={p.color} stroke="#000" strokeWidth="2" />
+          <g key={key}>
+            {/* Walls */}
+            <rect x={bx} y={by} width={bw} height={bh}
+              fill={p.color} stroke="#000" strokeWidth="1.5" />
+            {/* Door */}
+            <rect x={cx - 2} y={by + bh - 5} width={4} height={5}
+              fill="rgba(0,0,0,0.35)" />
+            {/* Roof */}
+            <polygon points={roofPts}
+              fill={p.color} stroke="#000" strokeWidth="1.5" />
+          </g>
         );
       })
     );
@@ -952,7 +1008,13 @@ function App() {
           {/* viewBox expanded to show port symbols outside the hex grid */}
           <svg width="620" height="620" viewBox="-310 -310 620 620" className="board"
             style={{ fontFamily: "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif" }}
-            onClick={() => { if (buildingMode) { setBuildingMode(null); setRoadBuildingRoadsLeft(0); } }}>
+            onClick={() => {
+              // Cancel building mode on background click, but NOT during road building card —
+              // player must place all roads (clicking outside would forfeit a free road).
+              if (buildingMode && roadBuildingRoadsLeft === 0) {
+                setBuildingMode(null);
+              }
+            }}>
             {game.board.hexes.map(renderHex)}
             {renderPorts()}
             {renderRoads()}

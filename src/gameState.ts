@@ -311,61 +311,64 @@ export function calculateLongestRoad(state: GameState, playerId: number): number
   return longest;
 }
 
-// Check if two edges connect
+// Check if two edges share a vertex using pixel coordinates
 function edgesConnect(e1: Edge, e2: Edge): boolean {
-  // Same hex, adjacent locations
-  if (e1.q === e2.q && e1.r === e2.r) {
-    const diff = Math.abs(e1.location - e2.location);
-    return diff === 1 || diff === 5;
-  }
-  // Adjacent hexes
-  const dq = Math.abs(e1.q - e2.q);
-  const dr = Math.abs(e1.r - e2.r);
-  if (dq + dr === 1) {
-    // They might share a vertex
-    return true;
-  }
-  return false;
+  // Two edges connect if they share an endpoint (within 4px tolerance, squared = 16)
+  const eps = 16;
+  const d = (ax: number, ay: number, bx: number, by: number) => (ax - bx) ** 2 + (ay - by) ** 2;
+  return (
+    d(e1.x1, e1.y1, e2.x1, e2.y1) < eps ||
+    d(e1.x1, e1.y1, e2.x2, e2.y2) < eps ||
+    d(e1.x2, e1.y2, e2.x1, e2.y1) < eps ||
+    d(e1.x2, e1.y2, e2.x2, e2.y2) < eps
+  );
 }
 
-// DFS for longest path
+// DFS for longest path — with backtracking to correctly find longest simple path
 function dfsLongestPath(edgeId: string, adjacency: Map<string, string[]>, visited: Set<string>): number {
-  if (visited.has(edgeId)) return 0;
   visited.add(edgeId);
-  
+
   const neighbors = adjacency.get(edgeId) || [];
   let maxLen = 0;
-  
+
   for (const neighbor of neighbors) {
     if (!visited.has(neighbor)) {
       maxLen = Math.max(maxLen, dfsLongestPath(neighbor, adjacency, visited));
     }
   }
-  
+
+  visited.delete(edgeId); // backtrack so other starting points can use this edge
   return 1 + maxLen;
 }
 
 // Update longest road holder
 export function updateLongestRoad(state: GameState): void {
-  let maxRoad = 0;
-  let holder: number | null = null;
-  
+  // Recalculate road lengths for all players
   state.players.forEach(player => {
-    const road = calculateLongestRoad(state, player.id);
-    player.longestRoad = road;
-    if (road > maxRoad && road >= 5) {
-      maxRoad = road;
-      holder = player.id;
+    player.longestRoad = calculateLongestRoad(state, player.id);
+  });
+
+  const currentHolderRoad = state.longestRoadHolder !== null
+    ? state.players[state.longestRoadHolder].longestRoad
+    : 0;
+
+  // Find the player with the longest road who has >= 5 and beats the current holder
+  let maxRoad = Math.max(currentHolderRoad, 4); // challenger must exceed current holder
+  let newHolder: number | null = state.longestRoadHolder;
+
+  state.players.forEach(player => {
+    if (player.longestRoad > maxRoad) {
+      maxRoad = player.longestRoad;
+      newHolder = player.id;
     }
   });
-  
-  // Only update if someone beats the current holder
-  if (holder !== null && holder !== state.longestRoadHolder) {
-    if (state.longestRoadHolder === null || 
-        maxRoad > state.players[state.longestRoadHolder].longestRoad) {
-      state.longestRoadHolder = holder;
-    }
+
+  // If current holder no longer has >= 5 roads and nobody else qualifies, clear the title
+  if (newHolder !== null && state.players[newHolder].longestRoad < 5) {
+    newHolder = null;
   }
+
+  state.longestRoadHolder = newHolder;
 }
 
 // Update largest army holder
