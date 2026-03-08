@@ -142,8 +142,8 @@ const HEX_ICON: Record<Resource, string> = {
 // Large illustrated emoji shown on each hex tile — no text labels, just visual art
 const HEX_TILE_EMOJI: Record<Resource, string[]> = {
   wood:   ['🌲', '🌲', '🌲'],  // three trees
-  brick:  ['🧱', '⛰️'],        // brick + hill
-  sheep:  ['🐑', '🌿'],        // sheep on grass
+  brick:  ['🧱'],              // brick
+  sheep:  ['🐑', '🐑'],        // sheep
   wheat:  ['🌾', '🌾'],        // wheat sheaves
   ore:    ['⛰️', '⛰️'],        // mountains + stone
   desert: ['🏜️'],              // desert
