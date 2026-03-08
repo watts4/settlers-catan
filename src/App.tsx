@@ -1449,6 +1449,31 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             {renderBuildableSpots()}
             {renderRobberTargets()}
           </svg>
+
+          {/* Floating dice button — lower-left of board */}
+          {game.phase === 'playing' && (() => {
+            const needsRoll = isMyTurn && !game.dice && !isRolling;
+            const dieClass = (extra: string) =>
+              `die floating-die${isRolling ? ' die-rolling' : game.dice ? ' die-landed' : ''}${extra}`;
+            return (
+              <button
+                className={`floating-dice-btn${needsRoll ? ' dice-glow' : ''}`}
+                onClick={needsRoll ? handleRollDice : undefined}
+                disabled={!needsRoll && !isRolling && !game.dice}
+                title={needsRoll ? 'Roll Dice' : game.dice ? `${game.dice[0]} + ${game.dice[1]} = ${game.dice[0] + game.dice[1]}` : ''}
+              >
+                <span className={dieClass('')}>
+                  {isRolling ? animDice[0] : game.dice ? game.dice[0] : '?'}
+                </span>
+                <span className={dieClass('')}>
+                  {isRolling ? animDice[1] : game.dice ? game.dice[1] : '?'}
+                </span>
+                {game.dice && !isRolling && (
+                  <span className="floating-dice-sum">={game.dice[0] + game.dice[1]}</span>
+                )}
+              </button>
+            );
+          })()}
         </div>
 
         {/* Action Panel */}
@@ -1816,26 +1841,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 </div>
               )}
 
-              {/* Dice */}
-              <div className="dice-section">
-                {isRolling ? (
-                  <div className="dice-result">
-                    <span className="die die-rolling">{animDice[0]}</span>
-                    <span className="die die-rolling">{animDice[1]}</span>
-                    <span className="dice-sum">🎲</span>
-                  </div>
-                ) : game.dice ? (
-                  <div className="dice-result">
-                    <span className="die die-landed">{game.dice[0]}</span>
-                    <span className="die die-landed">{game.dice[1]}</span>
-                    <span className="dice-sum">= {game.dice[0] + game.dice[1]}</span>
-                  </div>
-                ) : (
-                  <button className="btn btn-primary" onClick={handleRollDice} disabled={!isMyTurn || isRolling}>
-                    🎲 Roll Dice
-                  </button>
-                )}
-              </div>
 
               {/* Error message */}
               {buildError && (

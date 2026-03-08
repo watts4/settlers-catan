@@ -92,10 +92,54 @@ body {
 
 /* Board */
 .board-container {
+  position: relative;
   background: linear-gradient(135deg, #654321 0%, #8b4513 50%, #654321 100%);
   border-radius: 15px;
   padding: 30px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.1);
+}
+
+/* Floating dice button */
+.floating-dice-btn {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background: rgba(18, 12, 6, 0.88);
+  border: 2px solid #555;
+  border-radius: 14px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+  z-index: 10;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  backdrop-filter: blur(4px);
+}
+
+.floating-dice-btn.dice-glow {
+  border-color: #ffd700;
+  cursor: pointer;
+  animation: floating-dice-glow 1.4s ease-in-out infinite;
+}
+
+@keyframes floating-dice-glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(255,215,0,0.45), 0 0 22px rgba(255,215,0,0.18); }
+  50%       { box-shadow: 0 0 24px rgba(255,215,0,0.85), 0 0 48px rgba(255,215,0,0.38); }
+}
+
+.floating-die {
+  width: 42px;
+  height: 42px;
+  font-size: 1.35rem;
+}
+
+.floating-dice-sum {
+  font-size: 1.05rem;
+  font-weight: bold;
+  color: #ffd700;
+  min-width: 28px;
+  text-align: center;
 }
 
 .board {
