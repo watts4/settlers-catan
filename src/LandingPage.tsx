@@ -287,56 +287,15 @@ export default function LandingPage({
         }}
       >
         {/* Solo card */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {hasSoloSave && (
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <button
-                onClick={onResumeSolo}
-                style={{
-                  flex: 1,
-                  background: `linear-gradient(135deg, #2a3a1a, #1a2a0a)`,
-                  border: `2px solid ${COLORS.green}`,
-                  borderRadius: '12px',
-                  padding: '12px 14px',
-                  cursor: 'pointer',
-                  color: COLORS.white,
-                  textAlign: 'center',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  fontWeight: 700,
-                  fontSize: '14px',
-                }}
-              >
-                <span>▶️</span> Resume Solo
-              </button>
-              <button
-                onClick={onDiscardSolo}
-                title="Discard saved game"
-                style={{
-                  background: 'transparent',
-                  border: `2px solid ${COLORS.red}66`,
-                  borderRadius: '12px',
-                  padding: '12px 10px',
-                  cursor: 'pointer',
-                  color: COLORS.red,
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                ✕ Discard
-              </button>
-            </div>
-          )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%' }}>
           <button
             onClick={onPlaySolo}
             style={{
+              flex: 1,
               background: `linear-gradient(135deg, #1a2a3a, #0f1f30)`,
               border: `2px solid ${COLORS.gold}55`,
               borderRadius: '16px',
-              padding: hasSoloSave ? '16px 20px' : '28px 20px',
+              padding: '28px 20px',
               cursor: 'pointer',
               color: COLORS.white,
               textAlign: 'center',
@@ -363,6 +322,42 @@ export default function LandingPage({
               {hasSoloSave ? 'Start fresh against AI' : 'Play against AI opponents on this device'}
             </span>
           </button>
+          {hasSoloSave && (
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                onClick={onResumeSolo}
+                style={{
+                  flex: 1,
+                  background: `linear-gradient(135deg, #2a3a1a, #1a2a0a)`,
+                  border: `2px solid ${COLORS.green}`,
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  color: COLORS.white,
+                  fontWeight: 700,
+                  fontSize: '14px',
+                }}
+              >
+                Resume
+              </button>
+              <button
+                onClick={onDiscardSolo}
+                title="Discard saved game"
+                style={{
+                  background: 'transparent',
+                  border: `2px solid ${COLORS.red}66`,
+                  borderRadius: '10px',
+                  padding: '10px 14px',
+                  cursor: 'pointer',
+                  color: COLORS.red,
+                  fontSize: '13px',
+                  fontWeight: 600,
+                }}
+              >
+                ✕ Discard
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Create multiplayer card */}

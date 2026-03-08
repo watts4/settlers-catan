@@ -1640,86 +1640,78 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           {/* Bank Trade Modal */}
           {bankTradeModalOpen && (() => {
             const modalClose = () => { setBankTradeModalOpen(false); setTradeOffer({}); setTradeRequest({}); };
-            const resCell = (r: Resource, count: number, onInc: () => void, onDec: () => void, canInc: boolean, accent: string, subLabel?: string) => (
-              <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: count > 0 ? '#1a3028' : '#182030', border: `2px solid ${count > 0 ? accent : '#2a3a4a'}`, borderRadius: '10px', padding: '8px 6px', minWidth: '58px' }}>
-                <span style={{ fontSize: '2rem', lineHeight: 1 }}>{HEX_ICON[r]}</span>
-                <span style={{ fontSize: '0.65rem', color: '#8899aa', textTransform: 'capitalize' }}>{r}</span>
-                {subLabel && <span style={{ fontSize: '0.6rem', color: '#ffd70099' }}>{subLabel}</span>}
-                <span style={{ fontSize: '1rem', fontWeight: 'bold', color: count > 0 ? accent : '#444', minHeight: '1.2em' }}>{count > 0 ? `×${count}` : '—'}</span>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <button onClick={onDec} disabled={count === 0} style={{ width: '22px', height: '22px', borderRadius: '5px', border: 'none', background: count > 0 ? '#c0392b' : '#333', color: '#fff', cursor: count > 0 ? 'pointer' : 'default', fontWeight: 'bold', fontSize: '0.85rem' }}>−</button>
-                  <button onClick={onInc} disabled={!canInc} style={{ width: '22px', height: '22px', borderRadius: '5px', border: 'none', background: canInc ? '#27ae60' : '#333', color: '#fff', cursor: canInc ? 'pointer' : 'default', fontWeight: 'bold', fontSize: '0.85rem' }}>+</button>
-                </div>
+            const tapCell = (r: Resource, count: number, onTap: () => void, accent: string, ratioLabel?: string) => (
+              <div key={r} onClick={onTap} style={{
+                flex: 1, cursor: 'pointer', borderRadius: '12px', padding: '10px 4px',
+                background: count > 0 ? (accent === '#e67e22' ? '#2a1800' : '#001e10') : '#141e2a',
+                border: `2px solid ${count > 0 ? accent : '#2a3a4a'}`,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                userSelect: 'none', transition: 'background 0.12s, border-color 0.12s',
+              }}>
+                <span style={{ fontSize: '2.4rem', lineHeight: 1 }}>{HEX_ICON[r]}</span>
+                {ratioLabel && <span style={{ fontSize: '0.6rem', color: '#566a66', fontWeight: 600 }}>{ratioLabel}</span>}
+                <span style={{ fontSize: '1.15rem', fontWeight: 'bold', color: count > 0 ? accent : '#333', minHeight: '1.4em', lineHeight: 1 }}>
+                  {count > 0 ? `+${count}` : ''}
+                </span>
               </div>
             );
             const canExecute = totalOfferCredits > 0 && totalRequestAmount > 0 && totalRequestAmount <= totalOfferCredits;
+            const anythingSelected = RESOURCES.some(r => (tradeOffer[r] || 0) > 0) || RESOURCES.some(r => (tradeRequest[r] || 0) > 0);
             return (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={modalClose}>
-                <div style={{ background: '#1a2332', border: '2px solid #ffd700', borderRadius: '16px', padding: '20px', maxWidth: '420px', width: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.7)' }} onClick={e => e.stopPropagation()}>
+                <div style={{ background: '#1a2332', border: '2px solid #ffd700', borderRadius: '16px', padding: '20px', maxWidth: '400px', width: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.7)' }} onClick={e => e.stopPropagation()}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
                     <h3 style={{ margin: 0, color: '#ffd700', fontSize: '1.1rem' }}>🏦 Bank Trade</h3>
                     <button onClick={modalClose} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '1.3rem', padding: '2px 6px' }}>✕</button>
                   </div>
 
                   {/* YOU GIVE row */}
-                  <div style={{ marginBottom: '8px' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#8899aa', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🙋 You Give</div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                      {RESOURCES.map(r => {
-                        const ratio = tradeRatios[r] || 4;
-                        const offered = tradeOffer[r] || 0;
-                        const have = currentPlayer?.resources[r] || 0;
-                        return resCell(r, offered,
-                          () => { if (offered < have) setTradeOffer(p => ({ ...p, [r]: offered + 1 })); },
-                          () => {
-                            const n = offered - 1;
-                            setTradeOffer(p => ({ ...p, [r]: n }));
-                            const newCr = RESOURCES.reduce((s, r2) => s + Math.floor((r2 === r ? n : (tradeOffer[r2]||0)) / (tradeRatios[r2]||4)), 0);
-                            if (totalRequestAmount > newCr) setTradeRequest({});
-                          },
-                          offered < have,
-                          '#e67e22',
-                          `${ratio}:1 · have ${have}`
-                        );
-                      })}
-                    </div>
+                  <div style={{ fontSize: '0.72rem', color: '#8899aa', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🙋 You Give <span style={{ color: '#445', fontWeight: 400 }}>(tap to add)</span></div>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                    {RESOURCES.map(r => {
+                      const offered = tradeOffer[r] || 0;
+                      const have = currentPlayer?.resources[r] || 0;
+                      const ratio = tradeRatios[r] || 4;
+                      return tapCell(r, offered,
+                        () => { if (offered < have) setTradeOffer(p => ({ ...p, [r]: offered + 1 })); },
+                        '#e67e22', `${ratio}:1`
+                      );
+                    })}
                   </div>
 
-                  {/* Credits status */}
-                  <div style={{ textAlign: 'center', margin: '8px 0', fontSize: '0.82rem' }}>
-                    {totalOfferCredits > 0
-                      ? <span style={{ color: '#27ae60', fontWeight: 'bold' }}>✓ {totalOfferCredits} credit{totalOfferCredits > 1 ? 's' : ''}{totalRequestAmount > 0 ? ` · used ${totalRequestAmount}/${totalOfferCredits}` : ''}</span>
-                      : <span style={{ color: '#555' }}>⬇ Select resources to give above</span>}
+                  {/* Divider with credit status + clear */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                    <div style={{ flex: 1, height: '1px', background: '#2a3a4a' }} />
+                    <span style={{ fontSize: '0.8rem', color: totalOfferCredits > 0 ? '#27ae60' : '#445', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {totalOfferCredits > 0
+                        ? `✓ ${totalOfferCredits} credit${totalOfferCredits > 1 ? 's' : ''}${totalRequestAmount > 0 ? ` · ${totalRequestAmount} used` : ''}`
+                        : '⬇ tap to earn credits'}
+                    </span>
+                    <div style={{ flex: 1, height: '1px', background: '#2a3a4a' }} />
+                    {anythingSelected && (
+                      <button onClick={() => { setTradeOffer({}); setTradeRequest({}); }}
+                        style={{ padding: '3px 10px', background: '#2a3a4a', border: 'none', borderRadius: '6px', color: '#aaa', cursor: 'pointer', fontSize: '0.75rem' }}>
+                        ✕ Clear
+                      </button>
+                    )}
                   </div>
 
                   {/* BANK GIVES row */}
-                  <div style={{ marginBottom: '14px' }}>
-                    <div style={{ fontSize: '0.75rem', color: '#8899aa', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🏦 Bank Gives</div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                      {RESOURCES.map(r => {
-                        const requested = tradeRequest[r] || 0;
-                        const canAdd = totalRequestAmount < totalOfferCredits;
-                        return resCell(r, requested,
-                          () => { if (canAdd) setTradeRequest(p => ({ ...p, [r]: requested + 1 })); },
-                          () => setTradeRequest(p => ({ ...p, [r]: requested - 1 })),
-                          canAdd && totalOfferCredits > 0,
-                          '#27ae60'
-                        );
-                      })}
-                    </div>
+                  <div style={{ fontSize: '0.72rem', color: '#8899aa', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🏦 Bank Gives <span style={{ color: '#445', fontWeight: 400 }}>(tap to select)</span></div>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+                    {RESOURCES.map(r => {
+                      const requested = tradeRequest[r] || 0;
+                      return tapCell(r, requested,
+                        () => { if (totalRequestAmount < totalOfferCredits) setTradeRequest(p => ({ ...p, [r]: requested + 1 })); },
+                        '#27ae60'
+                      );
+                    })}
                   </div>
 
-                  {/* Execute */}
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={handleBankTrade} disabled={!canExecute}
-                      style={{ flex: 1, padding: '10px', background: canExecute ? '#e67e22' : '#333', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: 'bold', cursor: canExecute ? 'pointer' : 'default', fontSize: '0.95rem' }}>
-                      Execute Trade
-                    </button>
-                    <button onClick={() => { setTradeOffer({}); setTradeRequest({}); }}
-                      style={{ padding: '10px 16px', background: '#2a3a4a', border: 'none', borderRadius: '8px', color: '#aaa', cursor: 'pointer', fontSize: '0.85rem' }}>
-                      Clear
-                    </button>
-                  </div>
+                  <button onClick={handleBankTrade} disabled={!canExecute}
+                    style={{ width: '100%', padding: '11px', background: canExecute ? '#e67e22' : '#2a3040', border: 'none', borderRadius: '8px', color: canExecute ? '#fff' : '#555', fontWeight: 'bold', cursor: canExecute ? 'pointer' : 'default', fontSize: '0.95rem' }}>
+                    Execute Trade
+                  </button>
                 </div>
               </div>
             );
@@ -1728,16 +1720,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           {/* Player Trade Modal */}
           {playerTradeModalOpen && (() => {
             const modalClose = () => { setPlayerTradeModalOpen(false); setPlayerTradeOffer({}); setPlayerTradeRequest({}); setPlayerTradeResponses([]); };
-            const resCell = (r: Resource, count: number, onInc: () => void, onDec: () => void, canInc: boolean, accent: string, subLabel?: string) => (
-              <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', background: count > 0 ? '#1a3028' : '#182030', border: `2px solid ${count > 0 ? accent : '#2a3a4a'}`, borderRadius: '10px', padding: '8px 6px', minWidth: '58px' }}>
-                <span style={{ fontSize: '2rem', lineHeight: 1 }}>{HEX_ICON[r]}</span>
-                <span style={{ fontSize: '0.65rem', color: '#8899aa', textTransform: 'capitalize' }}>{r}</span>
-                {subLabel && <span style={{ fontSize: '0.6rem', color: '#aaa' }}>{subLabel}</span>}
-                <span style={{ fontSize: '1rem', fontWeight: 'bold', color: count > 0 ? accent : '#444', minHeight: '1.2em' }}>{count > 0 ? `×${count}` : '—'}</span>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <button onClick={onDec} disabled={count === 0} style={{ width: '22px', height: '22px', borderRadius: '5px', border: 'none', background: count > 0 ? '#c0392b' : '#333', color: '#fff', cursor: count > 0 ? 'pointer' : 'default', fontWeight: 'bold', fontSize: '0.85rem' }}>−</button>
-                  <button onClick={onInc} disabled={!canInc} style={{ width: '22px', height: '22px', borderRadius: '5px', border: 'none', background: canInc ? '#27ae60' : '#333', color: '#fff', cursor: canInc ? 'pointer' : 'default', fontWeight: 'bold', fontSize: '0.85rem' }}>+</button>
-                </div>
+            const tapCell = (r: Resource, count: number, onTap: () => void, accent: string) => (
+              <div key={r} onClick={onTap} style={{ flex: 1, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: count > 0 ? (accent === '#e67e22' ? '#2a1a08' : '#0a2218') : '#182030', border: `2px solid ${count > 0 ? accent : '#2a3a4a'}`, borderRadius: '12px', padding: '10px 4px', userSelect: 'none' }}>
+                <span style={{ fontSize: '2.4rem', lineHeight: 1 }}>{HEX_ICON[r]}</span>
+                <span style={{ fontSize: '1.15rem', fontWeight: 'bold', color: count > 0 ? accent : '#333', minHeight: '1.4em', lineHeight: 1 }}>{count > 0 ? `+${count}` : ''}</span>
               </div>
             );
             const hasOffer = RESOURCES.some(r => (playerTradeOffer[r] || 0) > 0);
@@ -1781,39 +1767,38 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                     /* Offer builder */
                     <div>
                       {/* YOU GIVE row */}
-                      <div style={{ marginBottom: '8px' }}>
-                        <div style={{ fontSize: '0.75rem', color: '#8899aa', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🙋 You Give</div>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                          {RESOURCES.map(r => {
-                            const offered = playerTradeOffer[r] || 0;
-                            const have = currentPlayer?.resources[r] || 0;
-                            return resCell(r, offered,
-                              () => { if (offered < have) setPlayerTradeOffer(p => ({ ...p, [r]: offered + 1 })); },
-                              () => setPlayerTradeOffer(p => ({ ...p, [r]: offered - 1 })),
-                              offered < have,
-                              '#e67e22',
-                              `have ${have}`
-                            );
-                          })}
-                        </div>
+                      <div style={{ fontSize: '0.7rem', color: '#8899aa', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🙋 You Give</div>
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                        {RESOURCES.map(r => {
+                          const offered = playerTradeOffer[r] || 0;
+                          const have = currentPlayer?.resources[r] || 0;
+                          return tapCell(r, offered, () => {
+                            if (offered < have) setPlayerTradeOffer(p => ({ ...p, [r]: offered + 1 }));
+                          }, '#e67e22');
+                        })}
                       </div>
 
-                      <div style={{ textAlign: 'center', color: '#555', fontSize: '1.2rem', margin: '6px 0' }}>⇄</div>
+                      {/* Divider with Clear */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                        <div style={{ flex: 1, height: '1px', background: '#2a3a4a' }} />
+                        {(hasOffer || hasRequest) && (
+                          <button onClick={() => { setPlayerTradeOffer({}); setPlayerTradeRequest({}); }}
+                            style={{ padding: '4px 12px', background: 'none', border: '1px solid #555', borderRadius: '6px', color: '#aaa', cursor: 'pointer', fontSize: '0.75rem' }}>
+                            ✕ Clear
+                          </button>
+                        )}
+                        <div style={{ flex: 1, height: '1px', background: '#2a3a4a' }} />
+                      </div>
 
                       {/* THEY GIVE row */}
-                      <div style={{ marginBottom: '14px' }}>
-                        <div style={{ fontSize: '0.75rem', color: '#8899aa', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🤝 They Give</div>
-                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                          {RESOURCES.map(r => {
-                            const requested = playerTradeRequest[r] || 0;
-                            return resCell(r, requested,
-                              () => setPlayerTradeRequest(p => ({ ...p, [r]: requested + 1 })),
-                              () => setPlayerTradeRequest(p => ({ ...p, [r]: requested - 1 })),
-                              true,
-                              '#27ae60'
-                            );
-                          })}
-                        </div>
+                      <div style={{ fontSize: '0.7rem', color: '#8899aa', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🤝 They Give</div>
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
+                        {RESOURCES.map(r => {
+                          const requested = playerTradeRequest[r] || 0;
+                          return tapCell(r, requested, () => {
+                            setPlayerTradeRequest(p => ({ ...p, [r]: requested + 1 }));
+                          }, '#27ae60');
+                        })}
                       </div>
 
                       <button onClick={handleProposePlayerTrade} disabled={!hasOffer || !hasRequest}
