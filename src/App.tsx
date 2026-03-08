@@ -713,12 +713,10 @@ function App() {
       addLog(newGame, `${prev.players[prev.currentPlayer].name} moved the robber`);
       return newGame;
     });
-    if (adjacent.length === 0) return;
-    if (adjacent.length === 1) {
-      handleSteal(adjacent[0].id);
-    } else {
-      setStealCandidates(adjacent);
-    }
+    // Always show the steal UI — even for a single candidate — so the player
+    // always gets a clear confirmation prompt. Pass an empty array if nobody
+    // is adjacent/has cards so the "nobody to steal from" message is shown.
+    setStealCandidates(adjacent);
   };
 
   const handleSteal = (fromPlayerId: number) => {
