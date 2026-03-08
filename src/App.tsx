@@ -727,6 +727,58 @@ function App() {
 
   // ── Rendering ────────────────────────────────────────────────────────────────
 
+  const renderBoardDefs = () => (
+    <defs>
+      {/* Wood: vertical bark/grain lines */}
+      <pattern id="pat-wood" x="0" y="0" width="10" height="12" patternUnits="userSpaceOnUse">
+        <line x1="0" y1="0" x2="0" y2="12" stroke="rgba(0,0,0,0.2)" strokeWidth="2.5" />
+        <line x1="5" y1="0" x2="5" y2="12" stroke="rgba(255,255,255,0.1)" strokeWidth="1.5" />
+      </pattern>
+      {/* Brick: staggered mortar grid */}
+      <pattern id="pat-brick" x="0" y="0" width="18" height="10" patternUnits="userSpaceOnUse">
+        <rect x="0.5" y="0.5" width="17" height="4" fill="none" stroke="rgba(0,0,0,0.28)" strokeWidth="1" />
+        <rect x="0.5" y="5.5" width="17" height="4" fill="none" stroke="rgba(0,0,0,0.28)" strokeWidth="1" />
+        <line x1="9" y1="0" x2="9" y2="5" stroke="rgba(0,0,0,0.28)" strokeWidth="1" />
+        <line x1="0" y1="5" x2="0" y2="10" stroke="rgba(0,0,0,0.28)" strokeWidth="1" />
+        <line x1="18" y1="5" x2="18" y2="10" stroke="rgba(0,0,0,0.28)" strokeWidth="1" />
+      </pattern>
+      {/* Sheep: rolling wavy hills */}
+      <pattern id="pat-sheep" x="0" y="0" width="24" height="12" patternUnits="userSpaceOnUse">
+        <path d="M0,9 Q6,3 12,9 Q18,15 24,9" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.8" />
+        <path d="M0,4 Q6,-2 12,4 Q18,10 24,4" fill="none" stroke="rgba(0,0,0,0.1)" strokeWidth="1" />
+      </pattern>
+      {/* Wheat: vertical stalks with horizontal grain */}
+      <pattern id="pat-wheat" x="0" y="0" width="8" height="14" patternUnits="userSpaceOnUse">
+        <line x1="4" y1="0" x2="4" y2="14" stroke="rgba(255,255,255,0.22)" strokeWidth="1.8" />
+        <line x1="1" y1="5" x2="7" y2="5" stroke="rgba(0,0,0,0.14)" strokeWidth="0.8" />
+        <line x1="1" y1="10" x2="7" y2="10" stroke="rgba(0,0,0,0.14)" strokeWidth="0.8" />
+      </pattern>
+      {/* Ore: diagonal rock fracture lines */}
+      <pattern id="pat-ore" x="0" y="0" width="16" height="16" patternUnits="userSpaceOnUse">
+        <line x1="0" y1="16" x2="16" y2="0" stroke="rgba(255,255,255,0.18)" strokeWidth="2" />
+        <line x1="-8" y1="16" x2="8" y2="0" stroke="rgba(0,0,0,0.15)" strokeWidth="1" />
+        <line x1="8" y1="16" x2="24" y2="0" stroke="rgba(0,0,0,0.12)" strokeWidth="1" />
+      </pattern>
+      {/* Desert: sandy stipple */}
+      <pattern id="pat-desert" x="0" y="0" width="12" height="12" patternUnits="userSpaceOnUse">
+        <circle cx="3" cy="3" r="1.5" fill="rgba(0,0,0,0.12)" />
+        <circle cx="9" cy="9" r="1.2" fill="rgba(0,0,0,0.1)" />
+        <circle cx="9" cy="3" r="0.8" fill="rgba(255,255,255,0.12)" />
+        <circle cx="3" cy="9" r="0.8" fill="rgba(255,255,255,0.1)" />
+      </pattern>
+      {/* Gold: diagonal shimmer */}
+      <pattern id="pat-gold" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse">
+        <line x1="0" y1="10" x2="10" y2="0" stroke="rgba(255,255,255,0.25)" strokeWidth="2" />
+        <line x1="-5" y1="10" x2="5" y2="0" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+      </pattern>
+      {/* Vignette: lighter centre → darker edges for depth */}
+      <radialGradient id="hex-vignette" cx="50%" cy="50%" r="75%">
+        <stop offset="20%" stopColor="rgba(255,255,255,0.1)" />
+        <stop offset="100%" stopColor="rgba(0,0,0,0.38)" />
+      </radialGradient>
+    </defs>
+  );
+
   const renderHex = (hex: Hex) => {
     const cx = HEX_SIZE * 1.5 * hex.q;
     const cy = HEX_SIZE * (Math.sqrt(3) / 2 * hex.q + Math.sqrt(3) * hex.r);
@@ -750,6 +802,10 @@ function App() {
     return (
       <g key={hex.id}>
         <polygon points={pts.join(' ')} fill={HEX_COLOR[hex.resource]} stroke="#3a200a" strokeWidth="3" className="hex" />
+        {/* Resource-specific texture pattern */}
+        <polygon points={pts.join(' ')} fill={`url(#pat-${hex.resource})`} stroke="none" />
+        {/* Vignette: subtle depth (lighter centre, darker edges) */}
+        <polygon points={pts.join(' ')} fill="url(#hex-vignette)" stroke="none" />
 
         {/* Tile art — emoji spread across the hex, no text labels */}
         {tileEmojis.length === 1 && (
@@ -1026,6 +1082,7 @@ function App() {
                 setBuildingMode(null);
               }
             }}>
+            {renderBoardDefs()}
             {game.board.hexes.map(renderHex)}
             {renderPorts()}
             {renderRoads()}
