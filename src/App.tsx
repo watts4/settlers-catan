@@ -186,6 +186,8 @@ function App() {
   const [playerTradeOffer, setPlayerTradeOffer] = useState<Partial<Record<Resource, number>>>({});
   const [playerTradeRequest, setPlayerTradeRequest] = useState<Partial<Record<Resource, number>>>({});
   const [playerTradeResponses, setPlayerTradeResponses] = useState<{ playerId: number; accepts: boolean }[]>([]);
+  const [isRolling, setIsRolling] = useState(false);
+  const [animDice, setAnimDice] = useState<[number, number]>([1, 1]);
 
   const currentPlayer = game.players[game.currentPlayer];
   const isSetup = game.phase === 'setup1' || game.phase === 'setup2';
@@ -410,27 +412,75 @@ function App() {
     doPlaceRoad(game, edgeId);
   };
 
+  // ── Dice sound (Web Audio API, no external files) ────────────────────────────
+  function playDiceSound() {
+    try {
+      const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const duration = 0.75;
+      const sr = ctx.sampleRate;
+      const buf = ctx.createBuffer(1, sr * duration, sr);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) {
+        const t = i / sr;
+        const env = Math.exp(-t * 7);          // overall decay
+        const noise = (Math.random() * 2 - 1) * env;
+        // simulate periodic tumble clicks
+        const clicks = Math.sin(t * (10 + t * 18) * Math.PI * 2) > 0.88 ? env * 0.7 : 0;
+        d[i] = noise * 0.35 + clicks;
+      }
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1100;
+      filter.Q.value = 0.6;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.55, ctx.currentTime);
+      src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+      src.start(); src.stop(ctx.currentTime + duration);
+    } catch { /* audio unavailable */ }
+  }
+
+  // Cycle random faces while rolling
+  useEffect(() => {
+    if (!isRolling) return;
+    const id = setInterval(() => {
+      setAnimDice([
+        Math.ceil(Math.random() * 6) as 1|2|3|4|5|6,
+        Math.ceil(Math.random() * 6) as 1|2|3|4|5|6,
+      ]);
+    }, 75);
+    return () => clearInterval(id);
+  }, [isRolling]);
+
   const handleRollDice = () => {
+    if (isRolling) return;
     const dice = rollDice();
     const sum = dice[0] + dice[1];
-    setGame(prev => {
-      const newGame = { ...prev, dice };
-      if (sum !== 7) {
-        distributeResources(newGame, sum);
-      } else {
-        // Auto-discard half for anyone (human included) with 8+ cards
-        for (const p of newGame.players) {
-          if (getTotalResources(p) >= 8) discardHalf(newGame, p.id);
+
+    playDiceSound();
+    setIsRolling(true);
+
+    setTimeout(() => {
+      setIsRolling(false);
+      setGame(prev => {
+        const newGame = { ...prev, dice };
+        if (sum !== 7) {
+          distributeResources(newGame, sum);
+        } else {
+          for (const p of newGame.players) {
+            if (getTotalResources(p) >= 8) discardHalf(newGame, p.id);
+          }
         }
+        addLog(newGame, `Rolled ${dice[0]} + ${dice[1]} = ${sum}`);
+        return newGame;
+      });
+      if (sum === 7) {
+        setBuildingMode(null);
+        setTradeOffer({}); setTradeRequest({});
+        setRobbingMode(true);
       }
-      addLog(newGame, `Rolled ${dice[0]} + ${dice[1]} = ${sum}`);
-      return newGame;
-    });
-    if (sum === 7) {
-      setBuildingMode(null);
-      setTradeOffer({}); setTradeRequest({});
-      setRobbingMode(true);
-    }
+    }, 800);
   };
 
   const handleEndTurn = () => {
@@ -1255,14 +1305,20 @@ function App() {
 
               {/* Dice */}
               <div className="dice-section">
-                {game.dice ? (
+                {isRolling ? (
                   <div className="dice-result">
-                    <span className="die">{game.dice[0]}</span>
-                    <span className="die">{game.dice[1]}</span>
+                    <span className="die die-rolling">{animDice[0]}</span>
+                    <span className="die die-rolling">{animDice[1]}</span>
+                    <span className="dice-sum">🎲</span>
+                  </div>
+                ) : game.dice ? (
+                  <div className="dice-result">
+                    <span className="die die-landed">{game.dice[0]}</span>
+                    <span className="die die-landed">{game.dice[1]}</span>
                     <span className="dice-sum">= {game.dice[0] + game.dice[1]}</span>
                   </div>
                 ) : (
-                  <button className="btn btn-primary" onClick={handleRollDice} disabled={!isHumanTurn}>
+                  <button className="btn btn-primary" onClick={handleRollDice} disabled={!isHumanTurn || isRolling}>
                     🎲 Roll Dice
                   </button>
                 )}
