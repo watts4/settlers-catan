@@ -208,6 +208,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     requesting: Partial<Record<Resource, number>>;
     pendingState: GameState;
   } | null>(null);
+  // Counter-offer state
+  const [counterMode, setCounterMode] = useState(false);
+  const [counterOffering, setCounterOffering] = useState<Partial<Record<Resource, number>>>({});
+  const [counterRequesting, setCounterRequesting] = useState<Partial<Record<Resource, number>>>({});
+  const [counterResult, setCounterResult] = useState<'accepted' | 'declined' | null>(null);
 
   // ── Multiplayer sync ────────────────────────────────────────────────────────
   const lastSyncId = useRef('');
@@ -692,6 +697,70 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setShowPlayerTrade(false); setPlayerTradeOffer({}); setPlayerTradeRequest({}); setPlayerTradeResponses([]);
   };
 
+  // Returns true if the AI is willing to accept the given counter terms
+  function aiWillAcceptCounter(
+    aiPlayer: Player,
+    offering: Partial<Record<Resource, number>>,   // what AI gives
+    requesting: Partial<Record<Resource, number>>,  // what AI receives
+  ): boolean {
+    const totalGive = RESOURCES.reduce((s, r) => s + (offering[r] || 0), 0);
+    const totalReceive = RESOURCES.reduce((s, r) => s + (requesting[r] || 0), 0);
+    if (totalGive === 0 || totalReceive === 0) return false;
+    // AI can't give what it doesn't have
+    if (RESOURCES.some(r => (offering[r] || 0) > (aiPlayer.resources[r] || 0))) return false;
+    // AI accepts up to 2:1 (giving 2, receiving 1) — generous but not a pushover
+    if (totalGive / totalReceive > 2) return false;
+    return true;
+  }
+
+  const handleStartCounter = () => {
+    if (!aiTradeProposal) return;
+    setCounterOffering({ ...aiTradeProposal.offering });
+    setCounterRequesting({ ...aiTradeProposal.requesting });
+    setCounterMode(true);
+    setCounterResult(null);
+  };
+
+  const handleSendCounter = () => {
+    if (!aiTradeProposal) return;
+    const aiPlayer = game.players[aiTradeProposal.fromPlayer];
+    const accepts = aiWillAcceptCounter(aiPlayer, counterOffering, counterRequesting);
+    setCounterResult(accepts ? 'accepted' : 'declined');
+  };
+
+  const handleExecuteCounter = () => {
+    if (!aiTradeProposal || counterResult !== 'accepted') return;
+    const { fromPlayer, pendingState } = aiTradeProposal;
+    setAiTradeProposal(null);
+    setCounterMode(false);
+    setCounterResult(null);
+    setGame(() => {
+      const humanId = pendingState.players.find(p => p.isHuman && (multiplayerConfig ? p.id === multiplayerConfig.mySlot : true))?.id ?? 0;
+      const traded: GameState = {
+        ...pendingState,
+        players: pendingState.players.map(p => {
+          const res = { ...p.resources };
+          if (p.id === fromPlayer) {
+            RESOURCES.forEach(r => { res[r] = (res[r] || 0) - (counterOffering[r] || 0) + (counterRequesting[r] || 0); });
+          } else if (p.id === humanId) {
+            RESOURCES.forEach(r => { res[r] = (res[r] || 0) + (counterOffering[r] || 0) - (counterRequesting[r] || 0); });
+          }
+          return { ...p, resources: res };
+        }),
+      };
+      const aiName = pendingState.players[fromPlayer].name;
+      const giveStr = RESOURCES.filter(r => (counterOffering[r] || 0) > 0).map(r => `${counterOffering[r]}${HEX_ICON[r]}`).join(' ');
+      const getStr = RESOURCES.filter(r => (counterRequesting[r] || 0) > 0).map(r => `${counterRequesting[r]}${HEX_ICON[r]}`).join(' ');
+      addLog(traded, `${aiName} accepted counter: gave ${giveStr} for ${getStr}`);
+      return aiDoFullTurn(traded);
+    });
+  };
+
+  const handleBackToOriginal = () => {
+    setCounterMode(false);
+    setCounterResult(null);
+  };
+
   const handleAcceptAiTrade = () => {
     if (!aiTradeProposal) return;
     const { fromPlayer, offering, requesting, pendingState } = aiTradeProposal;
@@ -727,6 +796,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     if (!aiTradeProposal) return;
     const { pendingState } = aiTradeProposal;
     setAiTradeProposal(null);
+    setCounterMode(false);
+    setCounterResult(null);
     setGame(() => aiDoFullTurn(pendingState));
   };
 
@@ -1359,45 +1430,146 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               <h3>Actions</h3>
 
               {/* AI Trade Proposal — shown during AI's turn */}
-              {aiTradeProposal && (
-                <div style={{ padding: '14px', background: '#1a3a2a', border: '2px solid #27ae60', borderRadius: '10px', marginBottom: '12px' }}>
-                  <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#27ae60' }}>
-                    🤝 {game.players[aiTradeProposal.fromPlayer].name} wants to trade!
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                    <div style={{ background: '#253535', borderRadius: '6px', padding: '6px 10px' }}>
-                      <div style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '2px' }}>They give you:</div>
-                      <div style={{ fontSize: '1.1rem' }}>
-                        {(Object.keys(aiTradeProposal.offering) as Resource[]).map(r => `${aiTradeProposal.offering[r]}× ${HEX_ICON[r]}`).join(' ')}
-                      </div>
+              {aiTradeProposal && (() => {
+                const aiPlayer = game.players[aiTradeProposal.fromPlayer];
+                const humanPlayer = game.players.find(p => p.isHuman && (multiplayerConfig ? p.id === multiplayerConfig.mySlot : true));
+                const btnBase: React.CSSProperties = { border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontWeight: 'bold', padding: '7px 10px', fontSize: '0.85rem' };
+
+                // ── Counter result (accepted / declined) ──────────────────
+                if (counterResult) return (
+                  <div style={{ padding: '14px', background: '#1a3a2a', border: `2px solid ${counterResult === 'accepted' ? '#27ae60' : '#e74c3c'}`, borderRadius: '10px', marginBottom: '12px' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '1rem', color: counterResult === 'accepted' ? '#27ae60' : '#e74c3c' }}>
+                      {counterResult === 'accepted' ? '✅ Counter accepted!' : '❌ Counter declined'}
                     </div>
-                    <div style={{ fontSize: '1.2rem', color: '#aaa' }}>⇄</div>
-                    <div style={{ background: '#353525', borderRadius: '6px', padding: '6px 10px' }}>
-                      <div style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '2px' }}>You give them:</div>
-                      <div style={{ fontSize: '1.1rem' }}>
-                        {(Object.keys(aiTradeProposal.requesting) as Resource[]).map(r => `${aiTradeProposal.requesting[r]}× ${HEX_ICON[r]}`).join(' ')}
-                      </div>
-                    </div>
-                  </div>
-                  {/* Check if human can actually afford this trade */}
-                  {(() => {
-                    const humanPlayer = game.players.find(p => p.isHuman && (multiplayerConfig ? p.id === multiplayerConfig.mySlot : true));
-                    const canAffordTrade = humanPlayer && (Object.keys(aiTradeProposal.requesting) as Resource[]).every(r => (humanPlayer.resources[r] || 0) >= (aiTradeProposal.requesting[r] || 0));
-                    return (
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button onClick={handleAcceptAiTrade} disabled={!canAffordTrade}
-                          style={{ flex: 1, padding: '8px', background: canAffordTrade ? '#27ae60' : '#555', border: 'none', borderRadius: '6px', color: '#fff', cursor: canAffordTrade ? 'pointer' : 'not-allowed', fontWeight: 'bold' }}>
-                          ✓ Accept
+                    {counterResult === 'accepted' ? (
+                      <button onClick={handleExecuteCounter} style={{ ...btnBase, background: '#27ae60', width: '100%', padding: '10px' }}>
+                        ✓ Execute Trade
+                      </button>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button onClick={() => { setCounterMode(true); setCounterResult(null); }} style={{ ...btnBase, flex: 1, background: '#2a5a8a' }}>
+                          ↩ Try Different Counter
                         </button>
-                        <button onClick={handleDeclineAiTrade}
-                          style={{ flex: 1, padding: '8px', background: '#7b1a1a', border: 'none', borderRadius: '6px', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>
+                        <button onClick={handleBackToOriginal} style={{ ...btnBase, flex: 1, background: '#4a4a20' }}>
+                          See Original Offer
+                        </button>
+                        <button onClick={handleDeclineAiTrade} style={{ ...btnBase, flex: 1, background: '#7b1a1a' }}>
                           ✗ Decline
                         </button>
                       </div>
-                    );
-                  })()}
-                </div>
-              )}
+                    )}
+                  </div>
+                );
+
+                // ── Counter editing mode ───────────────────────────────────
+                if (counterMode) {
+                  const totalCounterGive = RESOURCES.reduce((s, r) => s + (counterOffering[r] || 0), 0);
+                  const totalCounterReceive = RESOURCES.reduce((s, r) => s + (counterRequesting[r] || 0), 0);
+                  const humanCanAffordCounter = humanPlayer && RESOURCES.every(r => (humanPlayer.resources[r] || 0) >= (counterRequesting[r] || 0));
+                  return (
+                    <div style={{ padding: '14px', background: '#1a3a2a', border: '2px solid #2a6a8a', borderRadius: '10px', marginBottom: '12px' }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: '10px', color: '#7ab8e8' }}>
+                        📝 Counter-Offer to {aiPlayer.name}
+                      </div>
+
+                      {/* AI gives you row */}
+                      <div style={{ marginBottom: '10px' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '5px' }}>They give you: (tap to adjust)</div>
+                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                          {RESOURCES.map(r => {
+                            const val = counterOffering[r] || 0;
+                            const aiHas = aiPlayer.resources[r] || 0;
+                            return (
+                              <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                <button onClick={() => val < aiHas && setCounterOffering(p => ({ ...p, [r]: val + 1 }))}
+                                  style={{ ...btnBase, padding: '4px 7px', background: val > 0 ? '#1a5a3a' : '#253535', border: val > 0 ? '1px solid #27ae60' : '1px solid #444', fontWeight: 'normal', opacity: val < aiHas ? 1 : 0.4 }}>
+                                  {HEX_ICON[r]}{val > 0 ? ` ×${val}` : ''}
+                                </button>
+                                {val > 0 && <button onClick={() => setCounterOffering(p => ({ ...p, [r]: val - 1 }))} style={{ ...btnBase, padding: '1px 8px', background: '#444', fontSize: '0.7rem', fontWeight: 'normal' }}>−</button>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '3px' }}>Max based on {aiPlayer.name}'s hand</div>
+                      </div>
+
+                      {/* You give row */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '0.75rem', color: '#aaa', marginBottom: '5px' }}>You give them: (your resources: {RESOURCES.filter(r => (humanPlayer?.resources[r] || 0) > 0).map(r => `${HEX_ICON[r]}×${humanPlayer?.resources[r]}`).join(' ') || 'none'})</div>
+                        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                          {RESOURCES.map(r => {
+                            const val = counterRequesting[r] || 0;
+                            const youHave = humanPlayer?.resources[r] || 0;
+                            return (
+                              <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                <button onClick={() => val < youHave && setCounterRequesting(p => ({ ...p, [r]: val + 1 }))}
+                                  style={{ ...btnBase, padding: '4px 7px', background: val > 0 ? '#5a3a0a' : '#353525', border: val > 0 ? '1px solid #e67e22' : '1px solid #444', fontWeight: 'normal', opacity: val < youHave ? 1 : 0.4 }}>
+                                  {HEX_ICON[r]}{val > 0 ? ` ×${val}` : ''}
+                                </button>
+                                {val > 0 && <button onClick={() => setCounterRequesting(p => ({ ...p, [r]: val - 1 }))} style={{ ...btnBase, padding: '1px 8px', background: '#444', fontSize: '0.7rem', fontWeight: 'normal' }}>−</button>}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {totalCounterGive > 0 && totalCounterReceive > 0 && (
+                        <div style={{ fontSize: '0.8rem', color: '#aaa', marginBottom: '8px', background: '#0a1a2a', padding: '6px 8px', borderRadius: '5px' }}>
+                          Summary: they give {totalCounterGive} resource{totalCounterGive !== 1 ? 's' : ''}, you give {totalCounterReceive}
+                          {totalCounterGive > totalCounterReceive * 2 && <span style={{ color: '#e74c3c' }}> — AI will likely decline (too lopsided)</span>}
+                          {totalCounterGive <= totalCounterReceive && <span style={{ color: '#27ae60' }}> — AI will likely accept</span>}
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={handleSendCounter}
+                          disabled={totalCounterGive === 0 || totalCounterReceive === 0 || !humanCanAffordCounter}
+                          style={{ ...btnBase, flex: 2, padding: '8px', background: (totalCounterGive > 0 && totalCounterReceive > 0 && humanCanAffordCounter) ? '#2a5a8a' : '#333' }}>
+                          📤 Send Counter-Offer
+                        </button>
+                        <button onClick={handleBackToOriginal} style={{ ...btnBase, flex: 1, background: '#444' }}>
+                          ← Back
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ── Original offer view ────────────────────────────────────
+                const canAffordOriginal = humanPlayer && RESOURCES.every(r => (humanPlayer.resources[r] || 0) >= (aiTradeProposal.requesting[r] || 0));
+                return (
+                  <div style={{ padding: '14px', background: '#1a3a2a', border: '2px solid #27ae60', borderRadius: '10px', marginBottom: '12px' }}>
+                    <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#27ae60' }}>
+                      🤝 {aiPlayer.name} wants to trade!
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                      <div style={{ background: '#253535', borderRadius: '6px', padding: '6px 10px', flex: 1 }}>
+                        <div style={{ fontSize: '0.72rem', color: '#aaa', marginBottom: '2px' }}>They give you:</div>
+                        <div style={{ fontSize: '1.1rem' }}>{RESOURCES.filter(r => (aiTradeProposal.offering[r] || 0) > 0).map(r => `${aiTradeProposal.offering[r]}× ${HEX_ICON[r]}`).join(' ')}</div>
+                      </div>
+                      <span style={{ color: '#aaa' }}>⇄</span>
+                      <div style={{ background: '#353525', borderRadius: '6px', padding: '6px 10px', flex: 1 }}>
+                        <div style={{ fontSize: '0.72rem', color: '#aaa', marginBottom: '2px' }}>You give them:</div>
+                        <div style={{ fontSize: '1.1rem' }}>{RESOURCES.filter(r => (aiTradeProposal.requesting[r] || 0) > 0).map(r => `${aiTradeProposal.requesting[r]}× ${HEX_ICON[r]}`).join(' ')}</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <button onClick={handleAcceptAiTrade} disabled={!canAffordOriginal}
+                        style={{ ...btnBase, flex: 1, background: canAffordOriginal ? '#27ae60' : '#555', cursor: canAffordOriginal ? 'pointer' : 'not-allowed' }}>
+                        ✓ Accept
+                      </button>
+                      <button onClick={handleStartCounter}
+                        style={{ ...btnBase, flex: 1, background: '#2a5a8a' }}>
+                        ✏️ Counter
+                      </button>
+                      <button onClick={handleDeclineAiTrade}
+                        style={{ ...btnBase, flex: 1, background: '#7b1a1a' }}>
+                        ✗ Decline
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Dev Cards Panel — shown first so it's always visible */}
               {isMyTurn && !isSetup && (
