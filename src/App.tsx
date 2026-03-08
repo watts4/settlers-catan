@@ -1108,12 +1108,18 @@ function App() {
               )}
             </div>
             <div className="player-resources">
-              {RESOURCES.map(res => {
-                const count = player.resources[res] || 0;
-                return count > 0 ? (
-                  <span key={res} className="resource">{HEX_ICON[res]} {count}</span>
-                ) : null;
-              })}
+              {player.isHuman ? (
+                RESOURCES.map(res => {
+                  const count = player.resources[res] || 0;
+                  return count > 0 ? (
+                    <span key={res} className="resource">{HEX_ICON[res]} {count}</span>
+                  ) : null;
+                })
+              ) : (
+                <span className="resource" style={{ color: '#aaa' }}>
+                  🂠 {getTotalResources(player)} card{getTotalResources(player) !== 1 ? 's' : ''}
+                </span>
+              )}
             </div>
           </div>
         ))}
@@ -1624,8 +1630,8 @@ function App() {
         </div>
       </div>
 
-      {/* Game Log */}
-      <div className="game-log">
+      {/* Game Log — hidden during normal gameplay */}
+      {/* <div className="game-log">
         <h4>📜 Game Log</h4>
         <div className="log-entries">
           {game.log.slice(-10).map((entry, i) => (
@@ -1638,7 +1644,7 @@ function App() {
             </div>
           ))}
         </div>
-      </div>
+      </div> */}
 
       {/* Game Over overlay */}
       {game.winner !== null && (
