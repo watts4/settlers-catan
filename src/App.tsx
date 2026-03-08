@@ -214,6 +214,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [counterRequesting, setCounterRequesting] = useState<Partial<Record<Resource, number>>>({});
   const [counterResult, setCounterResult] = useState<'accepted' | 'declined' | null>(null);
 
+  // Discard UI state — shown when a 7 is rolled and human has 8+ cards
+  const [humanDiscardPending, setHumanDiscardPending] = useState<{ toDiscard: number } | null>(null);
+  const [discardSelection, setDiscardSelection] = useState<Partial<Record<Resource, number>>>({});
+  const afterHumanDiscardRef = useRef<((s: GameState) => GameState) | null>(null);
+
   // ── Multiplayer sync ────────────────────────────────────────────────────────
   const lastSyncId = useRef('');
   const isExternalUpdate = useRef(false);
@@ -280,6 +285,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
   // True while the human must move the robber or choose who to steal from
   const mustMoveRobber = robbingMode || stealCandidates.length > 0;
+  const mustDiscard = !!humanDiscardPending;
 
   // ── Solo game persistence ─────────────────────────────────────────────────
   useEffect(() => {
@@ -343,21 +349,33 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     if (aiTradeProposal) return; // already waiting for human response
 
     const timer = setTimeout(() => {
+      // Roll dice outside setGame to avoid StrictMode double-roll
+      const dice = rollDice();
+      const sum = dice[0] + dice[1];
+
+      // Check if any human player needs to discard (use current game from closure)
+      const humanPlayerInGame = game.players.find(p => p.isHuman);
+      const humanNeedsDiscard = sum === 7 && !!humanPlayerInGame && getTotalResources(humanPlayerInGame) >= 8;
+      const humanDiscardCount = humanNeedsDiscard ? Math.floor(getTotalResources(humanPlayerInGame!) / 2) : 0;
+
       setGame(prev => {
         if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) return prev;
 
-        // Roll dice
-        const dice = rollDice();
-        const sum = dice[0] + dice[1];
         const afterRoll: GameState = { ...prev, dice };
         if (sum !== 7) {
           distributeResources(afterRoll, sum);
         } else {
+          // Auto-discard AI players only; human will choose via UI
           for (const p of afterRoll.players) {
-            if (getTotalResources(p) >= 8) discardHalf(afterRoll, p.id);
+            if (!p.isHuman && getTotalResources(p) >= 8) discardHalf(afterRoll, p.id);
           }
         }
         addLog(afterRoll, `${prev.players[aiPlayerId].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
+
+        // If human needs to discard, pause here — show discard UI
+        if (humanNeedsDiscard) {
+          return afterRoll;
+        }
 
         // ~45% chance the AI proposes a trade with a human player before acting
         const humanPlayers = afterRoll.players.filter(p => p.isHuman);
@@ -379,6 +397,14 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
         return aiDoFullTurn(afterRoll);
       });
+
+      // If human needs to discard, set up the discard UI after the setGame
+      if (humanNeedsDiscard) {
+        setHumanDiscardPending({ toDiscard: humanDiscardCount });
+        setDiscardSelection({});
+        // After human discards, AI continues with its full turn
+        afterHumanDiscardRef.current = (s) => aiDoFullTurn(s);
+      }
     }, 900);
 
     return () => clearTimeout(timer);
@@ -570,6 +596,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     playDiceSound();
     setIsRolling(true);
 
+    // Pre-check human discard need from current state (resources don't change during roll)
+    const myPlayer = game.players.find(p => p.isHuman);
+    const humanNeedsDiscard = sum === 7 && !!myPlayer && getTotalResources(myPlayer) >= 8;
+    const humanDiscardCount = humanNeedsDiscard ? Math.floor(getTotalResources(myPlayer!) / 2) : 0;
+
     setTimeout(() => {
       setIsRolling(false);
       setGame(prev => {
@@ -578,7 +609,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           distributeResources(newGame, sum);
         } else {
           for (const p of newGame.players) {
-            if (getTotalResources(p) >= 8) discardHalf(newGame, p.id);
+            // Auto-discard AI players only; human will choose via UI
+            if (!p.isHuman && getTotalResources(p) >= 8) discardHalf(newGame, p.id);
           }
         }
         addLog(newGame, `Rolled ${dice[0]} + ${dice[1]} = ${sum}`);
@@ -587,9 +619,48 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       if (sum === 7) {
         setBuildingMode(null);
         setTradeOffer({}); setTradeRequest({});
-        setRobbingMode(true);
+        if (humanNeedsDiscard) {
+          setHumanDiscardPending({ toDiscard: humanDiscardCount });
+          setDiscardSelection({});
+          afterHumanDiscardRef.current = null; // null = human's turn; set robbingMode after
+        } else {
+          setRobbingMode(true);
+        }
       }
     }, 800);
+  };
+
+  const handleConfirmDiscard = () => {
+    if (!humanDiscardPending) return;
+    const total = RESOURCES.reduce((s, r) => s + (discardSelection[r] || 0), 0);
+    if (total !== humanDiscardPending.toDiscard) return;
+
+    const afterDiscard = afterHumanDiscardRef.current;
+    afterHumanDiscardRef.current = null;
+    const sel = { ...discardSelection };
+    const discardCount = humanDiscardPending.toDiscard;
+
+    setGame(prev => {
+      const newGame = { ...prev };
+      newGame.players = newGame.players.map(p => {
+        if (!p.isHuman) return p;
+        const resources = { ...p.resources };
+        for (const r of RESOURCES) {
+          resources[r] = Math.max(0, (resources[r] || 0) - (sel[r] || 0));
+        }
+        return { ...p, resources };
+      });
+      const humanPlayer = newGame.players.find(p => p.isHuman);
+      addLog(newGame, `${humanPlayer?.name ?? 'You'} discarded ${discardCount} card(s)`);
+      return afterDiscard ? afterDiscard(newGame) : newGame;
+    });
+
+    setHumanDiscardPending(null);
+    setDiscardSelection({});
+    if (!afterDiscard) {
+      // Human's own turn — now show robber movement
+      setRobbingMode(true);
+    }
   };
 
   const handleEndTurn = () => {
@@ -1619,7 +1690,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                         const count = currentPlayer.devCards.filter(c => c === cardType).length;
                         if (count === 0) return null;
                         // Can only play cards that existed at the start of this turn (not bought this turn)
-                        const canPlay = cardType !== 'victory' && !devCardPlayedThisTurn && !mustMoveRobber && game.phase === 'playing' && (devHandAtTurnStart[cardType] ?? 0) > 0;
+                        const canPlay = cardType !== 'victory' && !devCardPlayedThisTurn && !mustMoveRobber && !mustDiscard && game.phase === 'playing' && (devHandAtTurnStart[cardType] ?? 0) > 0;
                         const cardLabel: Record<string, string> = {
                           knight: '⚔️ Knight',
                           road: '🛣️ Road Building',
@@ -1670,6 +1741,55 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                   )}
                 </div>
               )}
+
+              {/* Discard UI — shown when rolling 7 with 8+ cards */}
+              {humanDiscardPending && (() => {
+                const humanPlayer = game.players.find(p => p.isHuman);
+                if (!humanPlayer) return null;
+                const discardSelectedTotal = RESOURCES.reduce((s, r) => s + (discardSelection[r] || 0), 0);
+                const remaining = humanDiscardPending.toDiscard - discardSelectedTotal;
+                return (
+                  <div style={{ padding: '14px', background: '#5a1a1a', borderRadius: '8px', marginBottom: '10px' }}>
+                    <div style={{ marginBottom: '10px', fontWeight: 'bold', color: '#ff9090' }}>
+                      🃏 You have {getTotalResources(humanPlayer)} cards — discard {humanDiscardPending.toDiscard}
+                      {remaining > 0 && <span style={{ color: '#f88', fontWeight: 'normal', marginLeft: '8px' }}>({remaining} more to select)</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                      {RESOURCES.map(r => {
+                        const have = humanPlayer.resources[r] || 0;
+                        const selected = discardSelection[r] || 0;
+                        if (have === 0) return null;
+                        return (
+                          <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: '#2a2a2a', borderRadius: '8px', padding: '8px 12px', minWidth: '72px' }}>
+                            <span style={{ textTransform: 'capitalize', fontSize: '0.85rem', fontWeight: 'bold' }}>{r}</span>
+                            <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Have: {have}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                              <button
+                                onClick={() => setDiscardSelection(prev => ({ ...prev, [r]: Math.max(0, (prev[r] || 0) - 1) }))}
+                                disabled={selected === 0}
+                                style={{ width: '24px', height: '24px', cursor: selected > 0 ? 'pointer' : 'default', borderRadius: '4px', border: 'none', background: selected > 0 ? '#c0392b' : '#444', color: '#fff', fontWeight: 'bold' }}
+                              >−</button>
+                              <span style={{ minWidth: '18px', textAlign: 'center', fontWeight: 'bold', color: selected > 0 ? '#ff9090' : '#fff' }}>{selected}</span>
+                              <button
+                                onClick={() => setDiscardSelection(prev => ({ ...prev, [r]: (prev[r] || 0) + 1 }))}
+                                disabled={selected >= have || discardSelectedTotal >= humanDiscardPending.toDiscard}
+                                style={{ width: '24px', height: '24px', cursor: (selected < have && discardSelectedTotal < humanDiscardPending.toDiscard) ? 'pointer' : 'default', borderRadius: '4px', border: 'none', background: (selected < have && discardSelectedTotal < humanDiscardPending.toDiscard) ? '#27ae60' : '#444', color: '#fff', fontWeight: 'bold' }}
+                              >+</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={handleConfirmDiscard}
+                      disabled={discardSelectedTotal !== humanDiscardPending.toDiscard}
+                      style={{ padding: '8px 20px', background: discardSelectedTotal === humanDiscardPending.toDiscard ? '#c0392b' : '#555', color: '#fff', border: 'none', borderRadius: '6px', cursor: discardSelectedTotal === humanDiscardPending.toDiscard ? 'pointer' : 'default', fontWeight: 'bold', fontSize: '0.95rem' }}
+                    >
+                      Discard {humanDiscardPending.toDiscard} Cards
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Robber prompt */}
               {robbingMode && isMyTurn && (
@@ -1741,26 +1861,26 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 <h4>Build</h4>
                 <button
                   className={`btn ${buildingMode === 'road' ? 'active' : ''} ${!canBuildRoad ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('road')} disabled={!isMyTurn || mustMoveRobber || roadBuildingRoadsLeft > 0}
+                  onClick={() => handleBuildToggle('road')} disabled={!isMyTurn || mustMoveRobber || mustDiscard || roadBuildingRoadsLeft > 0}
                   title={!canBuildRoad ? 'Need 1🌲 1🧱' : ''}
                 >
                   🛣️ Road {!canBuildRoad && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌲1🧱)</span>}
                 </button>
                 <button
                   className={`btn ${buildingMode === 'settlement' ? 'active' : ''} ${!canBuildSettlement ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('settlement')} disabled={!isMyTurn || mustMoveRobber}
+                  onClick={() => handleBuildToggle('settlement')} disabled={!isMyTurn || mustMoveRobber || mustDiscard}
                 >
                   🏠 Settlement {!canBuildSettlement && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌲1🧱1🌾1🐑)</span>}
                 </button>
                 <button
                   className={`btn ${buildingMode === 'city' ? 'active' : ''} ${!canBuildCity ? 'cannot-afford' : ''}`}
-                  onClick={() => handleBuildToggle('city')} disabled={!isMyTurn || mustMoveRobber}
+                  onClick={() => handleBuildToggle('city')} disabled={!isMyTurn || mustMoveRobber || mustDiscard}
                 >
                   🏰 City {!canBuildCity && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 2🌾3⛏️)</span>}
                 </button>
                 <button
                   className={`btn ${!canBuildDevCard ? 'cannot-afford' : ''}`}
-                  onClick={handleBuyDevCard} disabled={!isMyTurn || mustMoveRobber || !canBuildDevCard}
+                  onClick={handleBuyDevCard} disabled={!isMyTurn || mustMoveRobber || mustDiscard || !canBuildDevCard}
                   title="Need 1🌾 1🐑 1⛏️"
                 >
                   🃏 Dev Card {!canBuildDevCard && <span style={{ opacity: 0.6, fontSize: '0.8em' }}>(need 1🌾1🐑1⛏️)</span>}
@@ -1768,7 +1888,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               </div>
 
               {/* Player Trade */}
-              {isMyTurn && game.dice && !mustMoveRobber && (
+              {isMyTurn && game.dice && !mustMoveRobber && !mustDiscard && (
                 <div className="trade-section">
                   <h4>🤝 Trade with Players</h4>
                   {!showPlayerTrade && playerTradeResponses.length === 0 && (
@@ -1891,10 +2011,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                         <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                           <button
                             onClick={() => {
-                              if (!isMyTurn || mustMoveRobber || !canAdd) return;
+                              if (!isMyTurn || mustMoveRobber || mustDiscard || !canAdd) return;
                               setTradeOffer(prev => ({ ...prev, [r]: offered + 1 }));
                             }}
-                            disabled={!isMyTurn || mustMoveRobber}
+                            disabled={!isMyTurn || mustMoveRobber || mustDiscard}
                             style={{
                               padding: '4px 7px', fontSize: '0.8rem',
                               border: offered > 0 ? '2px solid #e67e22' : '2px solid transparent',
@@ -1958,10 +2078,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                         <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                           <button
                             onClick={() => {
-                              if (!isMyTurn || mustMoveRobber || !canAdd) return;
+                              if (!isMyTurn || mustMoveRobber || mustDiscard || !canAdd) return;
                               setTradeRequest(prev => ({ ...prev, [r]: requested + 1 }));
                             }}
-                            disabled={!isMyTurn || mustMoveRobber}
+                            disabled={!isMyTurn || mustMoveRobber || mustDiscard}
                             style={{
                               padding: '4px 7px', fontSize: '0.8rem', border: requested > 0 ? '2px solid #27ae60' : '2px solid transparent',
                               borderRadius: '5px',
@@ -2010,7 +2130,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 </div>
               </div>
 
-              <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isMyTurn || mustMoveRobber} style={{ marginTop: '10px' }}>
+              <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isMyTurn || mustMoveRobber || mustDiscard} style={{ marginTop: '10px' }}>
                 ⏭️ End Turn
               </button>
             </>
