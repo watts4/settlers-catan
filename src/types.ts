@@ -108,4 +108,18 @@ export interface GameState {
   playersToDiscard: number[];
   selectedHexForRobber: Hex | null;
   stealFromPlayer: number | null;
+  // Multiplayer trade coordination — stored in game state so all clients sync
+  pendingAiTrade?: {
+    tradeId: string;
+    fromPlayer: number;
+    offering: Partial<Record<Resource, number>>;
+    requesting: Partial<Record<Resource, number>>;
+  } | null;
+  pendingAiTurn?: boolean; // signals host to resume aiDoFullTurn after non-host resolves AI trade
+  pendingHumanTrade?: {
+    tradeId: string;
+    fromPlayer: number; // slot of the player who proposed
+    offering: Partial<Record<Resource, number>>;
+    requesting: Partial<Record<Resource, number>>;
+  } | null;
 }
