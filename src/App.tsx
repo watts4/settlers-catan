@@ -1446,7 +1446,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       <div className="game-area">
         <div className="board-container">
           {/* viewBox expanded to show port symbols outside the hex grid */}
-          <svg width="620" height="620" viewBox="-310 -310 620 620" className="board"
+          <svg viewBox="-310 -310 620 620" className="board"
+            width="620" height="620"
             style={{ fontFamily: "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif" }}
             onClick={() => {
               // Cancel building mode on background click, but NOT during road building card —

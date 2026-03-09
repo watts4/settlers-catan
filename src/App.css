@@ -11,12 +11,15 @@ body {
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
   color: #ecf0f1;
   min-height: 100vh;
+  margin: 0;
 }
 
 .game {
+  width: 100%;
   max-width: 1400px;
   margin: 0 auto;
   padding: 20px;
+  box-sizing: border-box;
 }
 
 /* Header */
@@ -420,11 +423,93 @@ body {
 
 /* Responsive */
 @media (max-width: 768px) {
+  .game {
+    padding: 8px;
+  }
+
+  .header {
+    margin-bottom: 8px;
+    padding: 6px 8px;
+  }
+
   .game-area {
     flex-direction: column;
+    gap: 10px;
   }
-  
+
+  .board-container {
+    padding: 8px;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .board-container svg.board {
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  .floating-dice-btn {
+    bottom: 8px;
+    left: 8px;
+    padding: 6px 8px;
+    border-radius: 10px;
+  }
+
+  .floating-die {
+    width: 32px;
+    height: 32px;
+    font-size: 1.1rem;
+  }
+
+  .floating-devcard-btn {
+    top: 8px;
+    right: 8px;
+    padding: 6px 8px;
+  }
+
   .player-bar {
-    justify-content: center;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .player-card {
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    flex: 1;
+    border-width: 2px;
+  }
+
+  .player-card.active {
+    transform: none;
+  }
+
+  .player-name {
+    font-size: 0.8rem;
+  }
+
+  .player-vp {
+    font-size: 1rem;
+    margin: 2px 0;
+  }
+
+  .player-resources {
+    font-size: 0.7rem;
+    gap: 3px;
+  }
+
+  .action-panel {
+    min-width: 0;
+    padding: 12px;
+    border-radius: 10px;
+  }
+
+  .btn {
+    padding: 10px 14px;
+    font-size: 0.9rem;
+  }
+
+  .game-log {
+    padding: 10px;
   }
 }
