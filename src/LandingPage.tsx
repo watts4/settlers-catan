@@ -410,7 +410,7 @@ export default function LandingPage({
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             <span style={{ fontSize: isMobile ? '15px' : '18px', fontWeight: 700, color: COLORS.green }}>
-              {isCreating ? 'Creating...' : 'Create Game'}
+              {isCreating ? 'Creating...' : 'New Multiplayer'}
             </span>
             {!isMobile && (
               <span style={{ fontSize: '13px', color: COLORS.muted }}>
