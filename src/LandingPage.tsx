@@ -329,7 +329,6 @@ export default function LandingPage({
               (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
             }}
           >
-            <span style={{ fontSize: isMobile ? '24px' : '36px' }}>🤖</span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               <span style={{ fontSize: isMobile ? '15px' : '18px', fontWeight: 700, color: COLORS.gold }}>
                 {hasSoloSave ? 'New Solo Game' : 'Play Solo'}
@@ -409,7 +408,6 @@ export default function LandingPage({
             (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
           }}
         >
-          <span style={{ fontSize: isMobile ? '24px' : '36px' }}>🏠</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             <span style={{ fontSize: isMobile ? '15px' : '18px', fontWeight: 700, color: COLORS.green }}>
               {isCreating ? 'Creating...' : 'Create Game'}
@@ -441,7 +439,6 @@ export default function LandingPage({
         >
           {!showJoin ? (
             <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', alignItems: 'center', gap: '10px', width: '100%' }}>
-              <span style={{ fontSize: isMobile ? '24px' : '36px' }}>🚪</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
                 <span style={{ fontSize: isMobile ? '15px' : '18px', fontWeight: 700, color: COLORS.blue }}>
                   Join Game
