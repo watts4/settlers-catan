@@ -275,6 +275,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const flashDiceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flyingResStartRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flyingResClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Ref for self-scheduled next AI turn (belt-and-suspenders with useEffect)
+  const nextAITimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // AI-initiated trade proposal — shown to human during AI's turn
   const [aiTradeProposal, setAiTradeProposal] = useState<{
     fromPlayer: number;
@@ -418,7 +420,123 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.currentPlayer, game.phase, game.setupStep]);
 
+  // ── Animation helpers (defined before AI turn logic which uses them) ────────
+  const showDiceFlash = useCallback((dice: [number, number]) => {
+    // Cancel any previous dice flash clear timeout to prevent it from
+    // clearing THIS flash when AI turns overlap
+    if (flashDiceTimeoutRef.current) clearTimeout(flashDiceTimeoutRef.current);
+    setFlashDice(dice);
+    flashDiceTimeoutRef.current = setTimeout(() => {
+      setFlashDice(null);
+      flashDiceTimeoutRef.current = null;
+    }, 1200);
+  }, []);
+
+  const showResourceGains = useCallback((gains: ResourceGain[]) => {
+    if (gains.length === 0) return;
+    // Cancel any previous resource animation timeouts to prevent them from
+    // clearing THIS animation when AI turns overlap
+    if (flyingResStartRef.current) clearTimeout(flyingResStartRef.current);
+    if (flyingResClearRef.current) clearTimeout(flyingResClearRef.current);
+    // Stagger each gain slightly so they don't all fly at once
+    flyingResStartRef.current = setTimeout(() => {
+      setFlyingResources(gains);
+      flyingResStartRef.current = null;
+      flyingResClearRef.current = setTimeout(() => {
+        setFlyingResources([]);
+        flyingResClearRef.current = null;
+      }, 1200);
+    }, 600); // start after dice flash is mostly visible
+  }, []);
+
   // ── AI playing turn ──────────────────────────────────────────────────────────
+  // Delay between AI turns — enough time for dice + resource animations
+  const AI_TURN_DELAY = 1800;
+
+  const executeAITurn = useCallback((aiPlayerId: number) => {
+    // Roll dice outside setGame to avoid StrictMode double-roll
+    const dice = rollDice();
+    const sum = dice[0] + dice[1];
+
+    // Cancel any in-flight animation timeouts before starting new ones
+    if (flashDiceTimeoutRef.current) { clearTimeout(flashDiceTimeoutRef.current); flashDiceTimeoutRef.current = null; }
+    if (flyingResStartRef.current) { clearTimeout(flyingResStartRef.current); flyingResStartRef.current = null; }
+    if (flyingResClearRef.current) { clearTimeout(flyingResClearRef.current); flyingResClearRef.current = null; }
+    setFlashDice(null);
+    setFlyingResources([]);
+
+    // Compute resource gains for fly animation (uses current game for board positions)
+    const gains = sum !== 7 ? computeResourceGains(game, sum) : [];
+    showDiceFlash(dice);
+    if (gains.length > 0) showResourceGains(gains);
+
+    // Track whether we need to defer a trade proposal (after dice flash finishes)
+    let deferredTradeData: { fromPlayer: number; offering: Partial<Record<Resource, number>>; requesting: Partial<Record<Resource, number>>; pendingState: GameState } | null = null;
+    let shouldScheduleNext = false;
+
+    setGame(prev => {
+      if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) return prev;
+
+      // Deep clone to avoid mutating React state (distributeResources/discardHalf mutate in-place)
+      const afterRoll: GameState = JSON.parse(JSON.stringify({ ...prev, dice }));
+      if (sum !== 7) {
+        distributeResources(afterRoll, sum);
+      } else {
+        // Auto-discard AI players only; human will choose via UI
+        for (const p of afterRoll.players) {
+          if (!p.isHuman && getTotalResources(p) >= 8) discardHalf(afterRoll, p.id);
+        }
+        // Track which human players need to discard (synced via Firestore to all clients)
+        const humansToDiscard = afterRoll.players
+          .filter(p => p.isHuman && getTotalResources(p) >= 8)
+          .map(p => p.id);
+        if (humansToDiscard.length > 0) {
+          afterRoll.playersToDiscard = humansToDiscard;
+        }
+      }
+      addLog(afterRoll, `${prev.players[aiPlayerId].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
+
+      // If any human needs to discard, pause here — each client shows discard UI
+      if (afterRoll.playersToDiscard.length > 0) {
+        return afterRoll;
+      }
+
+      // ~45% chance the AI proposes a trade with a human player before acting
+      const humanPlayers = afterRoll.players.filter(p => p.isHuman);
+      if (humanPlayers.length > 0 && Math.random() < 0.45) {
+        const aiPlayer = afterRoll.players[aiPlayerId];
+        const TRADEABLE = (['wood', 'brick', 'sheep', 'wheat', 'ore'] as Resource[]);
+        const excess = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) >= 2);
+        const needs = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) <= 1);
+        if (excess.length > 0 && needs.length > 0) {
+          const offer = excess.sort((a, b) => (aiPlayer.resources[b] || 0) - (aiPlayer.resources[a] || 0))[0];
+          const request = needs.sort((a, b) => (aiPlayer.resources[a] || 0) - (aiPlayer.resources[b] || 0))[0];
+          // Defer the trade proposal so it appears AFTER the dice flash clears
+          deferredTradeData = { fromPlayer: aiPlayerId, offering: { [offer]: 1 }, requesting: { [request]: 1 }, pendingState: afterRoll };
+          return afterRoll;
+        }
+      }
+
+      const result = aiDoFullTurn(afterRoll);
+      // Check if next player is also AI — if so, self-schedule the next turn
+      if (result.phase === 'playing' && !result.players[result.currentPlayer].isHuman) {
+        shouldScheduleNext = true;
+      }
+      return result;
+    });
+
+    // Show trade proposal after dice flash animation finishes
+    if (deferredTradeData) {
+      const tradeData = deferredTradeData;
+      setTimeout(() => setAiTradeProposal(tradeData), 1400);
+    } else if (shouldScheduleNext) {
+      // Directly schedule next AI turn — don't rely solely on useEffect re-triggering
+      const nextPlayer = (aiPlayerId + 1) % 4;
+      nextAITimerRef.current = setTimeout(() => executeAITurn(nextPlayer), AI_TURN_DELAY);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game, showDiceFlash, showResourceGains]);
+
   useEffect(() => {
     // In multiplayer: only host handles AI turns
     const shouldHandleAI = multiplayerConfig ? multiplayerConfig.isHost : true;
@@ -426,85 +544,15 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     if (game.phase !== 'playing' || game.players[aiPlayerId]?.isHuman || !shouldHandleAI) return;
     if (aiTradeProposal) return; // already waiting for human response
 
-    // Use a longer delay to ensure previous AI turn's animations have finished.
-    // Dice flash = 1200ms, resource fly = 600ms start + 1200ms duration = 1800ms total.
-    // 2000ms gives enough buffer so animations from the previous AI turn don't overlap.
-    const AI_TURN_DELAY = 2000;
+    // Cancel any self-scheduled AI timer (useEffect re-triggering takes priority)
+    if (nextAITimerRef.current) { clearTimeout(nextAITimerRef.current); nextAITimerRef.current = null; }
 
-    const timer = setTimeout(() => {
-      // Roll dice outside setGame to avoid StrictMode double-roll
-      const dice = rollDice();
-      const sum = dice[0] + dice[1];
+    const timer = setTimeout(() => executeAITurn(aiPlayerId), AI_TURN_DELAY);
 
-      // Cancel any in-flight animation timeouts from a previous AI turn
-      // before starting new animations
-      if (flashDiceTimeoutRef.current) { clearTimeout(flashDiceTimeoutRef.current); flashDiceTimeoutRef.current = null; }
-      if (flyingResStartRef.current) { clearTimeout(flyingResStartRef.current); flyingResStartRef.current = null; }
-      if (flyingResClearRef.current) { clearTimeout(flyingResClearRef.current); flyingResClearRef.current = null; }
-      setFlashDice(null);
-      setFlyingResources([]);
-
-      // Compute resource gains for fly animation before state mutation
-      const gains = sum !== 7 ? computeResourceGains(game, sum) : [];
-      showDiceFlash(dice);
-      if (gains.length > 0) showResourceGains(gains);
-
-      // Track whether we need to defer a trade proposal (after dice flash finishes)
-      let deferredTradeData: { fromPlayer: number; offering: Partial<Record<Resource, number>>; requesting: Partial<Record<Resource, number>>; pendingState: GameState } | null = null;
-
-      setGame(prev => {
-        if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) return prev;
-
-        const afterRoll: GameState = { ...prev, dice };
-        if (sum !== 7) {
-          distributeResources(afterRoll, sum);
-        } else {
-          // Auto-discard AI players only; human will choose via UI
-          for (const p of afterRoll.players) {
-            if (!p.isHuman && getTotalResources(p) >= 8) discardHalf(afterRoll, p.id);
-          }
-          // Track which human players need to discard (synced via Firestore to all clients)
-          const humansToDiscard = afterRoll.players
-            .filter(p => p.isHuman && getTotalResources(p) >= 8)
-            .map(p => p.id);
-          if (humansToDiscard.length > 0) {
-            afterRoll.playersToDiscard = humansToDiscard;
-          }
-        }
-        addLog(afterRoll, `${prev.players[aiPlayerId].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
-
-        // If any human needs to discard, pause here — each client shows discard UI
-        if (afterRoll.playersToDiscard.length > 0) {
-          return afterRoll;
-        }
-
-        // ~45% chance the AI proposes a trade with a human player before acting
-        const humanPlayers = afterRoll.players.filter(p => p.isHuman);
-        if (humanPlayers.length > 0 && Math.random() < 0.45) {
-          const aiPlayer = afterRoll.players[aiPlayerId];
-          const TRADEABLE = (['wood', 'brick', 'sheep', 'wheat', 'ore'] as Resource[]);
-          const excess = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) >= 2);
-          const needs = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) <= 1);
-          if (excess.length > 0 && needs.length > 0) {
-            const offer = excess.sort((a, b) => (aiPlayer.resources[b] || 0) - (aiPlayer.resources[a] || 0))[0];
-            const request = needs.sort((a, b) => (aiPlayer.resources[a] || 0) - (aiPlayer.resources[b] || 0))[0];
-            // Defer the trade proposal so it appears AFTER the dice flash clears
-            deferredTradeData = { fromPlayer: aiPlayerId, offering: { [offer]: 1 }, requesting: { [request]: 1 }, pendingState: afterRoll };
-            return afterRoll;
-          }
-        }
-
-        return aiDoFullTurn(afterRoll);
-      });
-
-      // Show trade proposal after dice flash animation finishes
-      if (deferredTradeData) {
-        const tradeData = deferredTradeData;
-        setTimeout(() => setAiTradeProposal(tradeData), 1400);
-      }
-    }, AI_TURN_DELAY);
-
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (nextAITimerRef.current) { clearTimeout(nextAITimerRef.current); nextAITimerRef.current = null; }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.currentPlayer, game.phase, game.turn, aiTradeProposal]);
 
@@ -708,34 +756,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     }, 75);
     return () => clearInterval(id);
   }, [isRolling]);
-
-  const showDiceFlash = useCallback((dice: [number, number]) => {
-    // Cancel any previous dice flash clear timeout to prevent it from
-    // clearing THIS flash when AI turns overlap
-    if (flashDiceTimeoutRef.current) clearTimeout(flashDiceTimeoutRef.current);
-    setFlashDice(dice);
-    flashDiceTimeoutRef.current = setTimeout(() => {
-      setFlashDice(null);
-      flashDiceTimeoutRef.current = null;
-    }, 1200);
-  }, []);
-
-  const showResourceGains = useCallback((gains: ResourceGain[]) => {
-    if (gains.length === 0) return;
-    // Cancel any previous resource animation timeouts to prevent them from
-    // clearing THIS animation when AI turns overlap
-    if (flyingResStartRef.current) clearTimeout(flyingResStartRef.current);
-    if (flyingResClearRef.current) clearTimeout(flyingResClearRef.current);
-    // Stagger each gain slightly so they don't all fly at once
-    flyingResStartRef.current = setTimeout(() => {
-      setFlyingResources(gains);
-      flyingResStartRef.current = null;
-      flyingResClearRef.current = setTimeout(() => {
-        setFlyingResources([]);
-        flyingResClearRef.current = null;
-      }, 1200);
-    }, 600); // start after dice flash is mostly visible
-  }, []);
 
   const handleRollDice = () => {
     if (isRolling) return;
