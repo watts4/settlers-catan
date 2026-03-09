@@ -253,6 +253,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   // ── Multiplayer sync ────────────────────────────────────────────────────────
   const lastSyncId = useRef('');
   const isExternalUpdate = useRef(false);
+  // Safety guard: non-host must not write to Firestore until it has the real game state
+  const hasInitialState = useRef(!multiplayerConfig || multiplayerConfig.isHost || !!initialGameState);
 
   // Listen to Firestore for game state changes from other players
   useEffect(() => {
@@ -262,6 +264,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       const data = snap.data();
       if (!data?.gameState || !data?.syncId) return;
       if (data.syncId === lastSyncId.current) return; // our own write echoing back
+      hasInitialState.current = true;
       isExternalUpdate.current = true;
       setGame(data.gameState as GameState);
     });
@@ -270,6 +273,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   // Write game state to Firestore when it changes (skip external updates)
   useEffect(() => {
     if (!multiplayerConfig?.roomId) return;
+    if (!hasInitialState.current) return; // non-host hasn't received real state yet
     if (isExternalUpdate.current) {
       isExternalUpdate.current = false;
       return;
@@ -384,11 +388,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       const dice = rollDice();
       const sum = dice[0] + dice[1];
 
-      // Check if any human player needs to discard (use current game from closure)
-      const humanPlayerInGame = game.players.find(p => p.isHuman);
-      const humanNeedsDiscard = sum === 7 && !!humanPlayerInGame && getTotalResources(humanPlayerInGame) >= 8;
-      const humanDiscardCount = humanNeedsDiscard ? Math.floor(getTotalResources(humanPlayerInGame!) / 2) : 0;
-
       setGame(prev => {
         if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) return prev;
 
@@ -400,12 +399,19 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           for (const p of afterRoll.players) {
             if (!p.isHuman && getTotalResources(p) >= 8) discardHalf(afterRoll, p.id);
           }
+          // Track which human players need to discard (synced via Firestore to all clients)
+          const humansToDiscard = afterRoll.players
+            .filter(p => p.isHuman && getTotalResources(p) >= 8)
+            .map(p => p.id);
+          if (humansToDiscard.length > 0) {
+            afterRoll.playersToDiscard = humansToDiscard;
+          }
         }
         addLog(afterRoll, `${prev.players[aiPlayerId].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
         showDiceFlash(dice);
 
-        // If human needs to discard, pause here — show discard UI
-        if (humanNeedsDiscard) {
+        // If any human needs to discard, pause here — each client shows discard UI
+        if (afterRoll.playersToDiscard.length > 0) {
           return afterRoll;
         }
 
@@ -429,14 +435,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
         return aiDoFullTurn(afterRoll);
       });
-
-      // If human needs to discard, set up the discard UI after the setGame
-      if (humanNeedsDiscard) {
-        setHumanDiscardPending({ toDiscard: humanDiscardCount });
-        setDiscardSelection({});
-        // After human discards, AI continues with its full turn
-        afterHumanDiscardRef.current = (s) => aiDoFullTurn(s);
-      }
     }, 900);
 
     return () => clearTimeout(timer);
@@ -449,6 +447,23 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       setPlayerTradeModalOpen(true);
     }
   }, [aiTradeProposal]);
+
+  // ── Multiplayer discard: watch playersToDiscard from game state ───────────
+  useEffect(() => {
+    const myId = multiplayerConfig ? multiplayerConfig.mySlot : (game.players.find(p => p.isHuman)?.id ?? 0);
+    if (game.playersToDiscard.includes(myId) && !humanDiscardPending) {
+      const myPlayer = game.players[myId];
+      const count = Math.floor(getTotalResources(myPlayer) / 2);
+      if (count > 0) {
+        setHumanDiscardPending({ toDiscard: count });
+        setDiscardSelection({});
+        // After discard, if it was during AI turn, the host will continue the AI turn
+        // once all humans have discarded (playersToDiscard is empty)
+        afterHumanDiscardRef.current = null;
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.playersToDiscard]);
 
   // ── Core placement ────────────────────────────────────────────────────────
 
@@ -641,7 +656,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setIsRolling(true);
 
     // Pre-check human discard need from current state (resources don't change during roll)
-    const myPlayer = game.players.find(p => p.isHuman);
+    const myPlayer = multiplayerConfig
+      ? game.players[multiplayerConfig.mySlot]
+      : game.players.find(p => p.isHuman);
     const humanNeedsDiscard = sum === 7 && !!myPlayer && getTotalResources(myPlayer) >= 8;
     const humanDiscardCount = humanNeedsDiscard ? Math.floor(getTotalResources(myPlayer!) / 2) : 0;
 
@@ -656,6 +673,13 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           for (const p of newGame.players) {
             // Auto-discard AI players only; human will choose via UI
             if (!p.isHuman && getTotalResources(p) >= 8) discardHalf(newGame, p.id);
+          }
+          // In multiplayer, track ALL human players who need to discard
+          if (multiplayerConfig) {
+            const humansToDiscard = newGame.players
+              .filter(p => p.isHuman && getTotalResources(p) >= 8)
+              .map(p => p.id);
+            newGame.playersToDiscard = humansToDiscard;
           }
         }
         addLog(newGame, `Rolled ${dice[0]} + ${dice[1]} = ${sum}`);
@@ -685,24 +709,36 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     const sel = { ...discardSelection };
     const discardCount = humanDiscardPending.toDiscard;
 
+    const myId = multiplayerConfig ? multiplayerConfig.mySlot : (game.players.find(p => p.isHuman)?.id ?? 0);
     setGame(prev => {
       const newGame = { ...prev };
       newGame.players = newGame.players.map(p => {
-        if (!p.isHuman) return p;
+        if (p.id !== myId) return p;
         const resources = { ...p.resources };
         for (const r of RESOURCES) {
           resources[r] = Math.max(0, (resources[r] || 0) - (sel[r] || 0));
         }
         return { ...p, resources };
       });
-      const humanPlayer = newGame.players.find(p => p.isHuman);
-      addLog(newGame, `${humanPlayer?.name ?? 'You'} discarded ${discardCount} card(s)`);
-      return afterDiscard ? afterDiscard(newGame) : newGame;
+      // Remove this player from playersToDiscard
+      newGame.playersToDiscard = newGame.playersToDiscard.filter(id => id !== myId);
+      const discardPlayer = newGame.players[myId];
+      addLog(newGame, `${discardPlayer?.name ?? 'You'} discarded ${discardCount} card(s)`);
+
+      // If this was during our own turn (afterDiscard is set), apply the continuation
+      if (afterDiscard) return afterDiscard(newGame);
+
+      // If all humans done discarding during AI turn, host continues AI turn
+      const shouldHandleAI = multiplayerConfig ? multiplayerConfig.isHost : true;
+      if (newGame.playersToDiscard.length === 0 && !newGame.players[newGame.currentPlayer].isHuman && shouldHandleAI) {
+        return aiDoFullTurn(newGame);
+      }
+      return newGame;
     });
 
     setHumanDiscardPending(null);
     setDiscardSelection({});
-    if (!afterDiscard) {
+    if (!afterDiscard && game.players[game.currentPlayer]?.id === myId) {
       // Human's own turn — now show robber movement
       setRobbingMode(true);
     }
@@ -885,7 +921,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setAiTradeProposal(null);
     // Apply the trade: human gives `requesting`, AI gives `offering`
     setGame(() => {
-      const humanId = pendingState.players.find(p => p.isHuman)?.id ?? 0;
+      const humanId = multiplayerConfig ? multiplayerConfig.mySlot : (pendingState.players.find(p => p.isHuman)?.id ?? 0);
       const traded: GameState = {
         ...pendingState,
         players: pendingState.players.map(p => {
@@ -2169,7 +2205,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
               {/* Discard UI — shown when rolling 7 with 8+ cards */}
               {humanDiscardPending && (() => {
-                const humanPlayer = game.players.find(p => p.isHuman);
+                const humanPlayer = multiplayerConfig
+                  ? game.players[multiplayerConfig.mySlot]
+                  : game.players.find(p => p.isHuman);
                 if (!humanPlayer) return null;
                 const discardSelectedTotal = RESOURCES.reduce((s, r) => s + (discardSelection[r] || 0), 0);
                 const remaining = humanDiscardPending.toDiscard - discardSelectedTotal;

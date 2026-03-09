@@ -26,6 +26,9 @@ function Root() {
   const [soloInitialState, setSoloInitialState] = useState<GameState | undefined>();
   const savedGame = useSavedGame();
 
+  // Initial game state — used for solo resume AND multiplayer (non-host gets state from lobby)
+  const [mpInitialState, setMpInitialState] = useState<GameState | undefined>();
+
   // Check for solo save in localStorage
   const [hasSoloSave, setHasSoloSave] = useState(() => {
     return !!localStorage.getItem('catan_solo_save');
@@ -46,6 +49,10 @@ function Root() {
   useEffect(() => {
     if (screen !== 'lobby' || !roomData || !multiplayerConfig) return;
     if (roomData.status === 'playing') {
+      // Non-host: grab the game state written by the host so App doesn't create a default
+      if (!multiplayerConfig.isHost && roomData.gameState) {
+        setMpInitialState(roomData.gameState as unknown as GameState);
+      }
       setScreen('game');
     }
   }, [roomData, screen, multiplayerConfig]);
@@ -182,7 +189,7 @@ function Root() {
   return (
     <App
       multiplayerConfig={multiplayerConfig}
-      initialGameState={soloInitialState}
+      initialGameState={soloInitialState ?? mpInitialState}
       onLeaveGame={handleLeaveGame}
     />
   );
