@@ -146,7 +146,7 @@ export default function LandingPage({
       <div
         style={{
           width: '100%',
-          maxWidth: '680px',
+          maxWidth: isMobile ? 'none' : '680px',
           display: 'flex',
           justifyContent: 'flex-end',
           marginBottom: isMobile ? '8px' : '16px',
@@ -224,7 +224,7 @@ export default function LandingPage({
         <div
           style={{
             width: '100%',
-            maxWidth: '680px',
+            maxWidth: isMobile ? 'none' : '680px',
             background: 'linear-gradient(135deg, #1a3a2a, #0d2a1a)',
             border: `1px solid ${COLORS.green}44`,
             borderRadius: '12px',
@@ -262,7 +262,7 @@ export default function LandingPage({
       <div
         style={{
           width: '100%',
-          maxWidth: '680px',
+          maxWidth: isMobile ? 'none' : '680px',
           marginBottom: isMobile ? '14px' : '28px',
         }}
       >
@@ -295,7 +295,7 @@ export default function LandingPage({
       <div
         style={{
           width: '100%',
-          maxWidth: '680px',
+          maxWidth: isMobile ? 'none' : '680px',
           display: 'grid',
           gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(200px, 1fr))',
           gap: isMobile ? '10px' : '16px',
