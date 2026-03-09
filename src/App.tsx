@@ -275,8 +275,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const flashDiceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flyingResStartRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flyingResClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Ref for self-scheduled next AI turn (belt-and-suspenders with useEffect)
-  const nextAITimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guards against concurrent AI turn execution (race between useEffect + timers)
+  const aiTurnInProgressRef = useRef(false);
+  // Tracks that a trade proposal is being deferred (set synchronously, before the 1400ms setTimeout fires)
+  const pendingTradeRef = useRef(false);
   // AI-initiated trade proposal — shown to human during AI's turn
   const [aiTradeProposal, setAiTradeProposal] = useState<{
     fromPlayer: number;
@@ -454,6 +456,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const AI_TURN_DELAY = 1800;
 
   const executeAITurn = useCallback((aiPlayerId: number) => {
+    // Prevent concurrent AI turn execution (race between useEffect re-trigger + timers)
+    if (aiTurnInProgressRef.current) return;
+    aiTurnInProgressRef.current = true;
+
     // Roll dice outside setGame to avoid StrictMode double-roll
     const dice = rollDice();
     const sum = dice[0] + dice[1];
@@ -472,10 +478,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
     // Track whether we need to defer a trade proposal (after dice flash finishes)
     let deferredTradeData: { fromPlayer: number; offering: Partial<Record<Resource, number>>; requesting: Partial<Record<Resource, number>>; pendingState: GameState } | null = null;
-    let shouldScheduleNext = false;
 
     setGame(prev => {
-      if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) return prev;
+      if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) {
+        aiTurnInProgressRef.current = false;
+        return prev;
+      }
 
       // Deep clone to avoid mutating React state (distributeResources/discardHalf mutate in-place)
       const afterRoll: GameState = JSON.parse(JSON.stringify({ ...prev, dice }));
@@ -498,6 +506,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
       // If any human needs to discard, pause here — each client shows discard UI
       if (afterRoll.playersToDiscard.length > 0) {
+        aiTurnInProgressRef.current = false;
         return afterRoll;
       }
 
@@ -511,28 +520,28 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         if (excess.length > 0 && needs.length > 0) {
           const offer = excess.sort((a, b) => (aiPlayer.resources[b] || 0) - (aiPlayer.resources[a] || 0))[0];
           const request = needs.sort((a, b) => (aiPlayer.resources[a] || 0) - (aiPlayer.resources[b] || 0))[0];
-          // Defer the trade proposal so it appears AFTER the dice flash clears
+          // Defer the trade proposal so it appears AFTER the dice flash clears.
+          // Set pendingTradeRef synchronously so the useEffect won't schedule over it.
           deferredTradeData = { fromPlayer: aiPlayerId, offering: { [offer]: 1 }, requesting: { [request]: 1 }, pendingState: afterRoll };
+          pendingTradeRef.current = true;
+          // aiTurnInProgressRef stays true — cleared when human responds to trade
           return afterRoll;
         }
       }
 
       const result = aiDoFullTurn(afterRoll);
-      // Check if next player is also AI — if so, self-schedule the next turn
-      if (result.phase === 'playing' && !result.players[result.currentPlayer].isHuman) {
-        shouldScheduleNext = true;
-      }
+      // Turn is complete — allow next AI turn to be scheduled by useEffect
+      aiTurnInProgressRef.current = false;
       return result;
     });
 
     // Show trade proposal after dice flash animation finishes
     if (deferredTradeData) {
       const tradeData = deferredTradeData;
-      setTimeout(() => setAiTradeProposal(tradeData), 1400);
-    } else if (shouldScheduleNext) {
-      // Directly schedule next AI turn — don't rely solely on useEffect re-triggering
-      const nextPlayer = (aiPlayerId + 1) % 4;
-      nextAITimerRef.current = setTimeout(() => executeAITurn(nextPlayer), AI_TURN_DELAY);
+      setTimeout(() => {
+        pendingTradeRef.current = false;
+        setAiTradeProposal(tradeData);
+      }, 1400);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game, showDiceFlash, showResourceGains]);
@@ -543,16 +552,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     const aiPlayerId = game.currentPlayer;
     if (game.phase !== 'playing' || game.players[aiPlayerId]?.isHuman || !shouldHandleAI) return;
     if (aiTradeProposal) return; // already waiting for human response
-
-    // Cancel any self-scheduled AI timer (useEffect re-triggering takes priority)
-    if (nextAITimerRef.current) { clearTimeout(nextAITimerRef.current); nextAITimerRef.current = null; }
+    if (pendingTradeRef.current) return; // trade proposal being deferred (not yet in state)
+    if (aiTurnInProgressRef.current) return; // another AI turn is already executing
 
     const timer = setTimeout(() => executeAITurn(aiPlayerId), AI_TURN_DELAY);
 
-    return () => {
-      clearTimeout(timer);
-      if (nextAITimerRef.current) { clearTimeout(nextAITimerRef.current); nextAITimerRef.current = null; }
-    };
+    return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.currentPlayer, game.phase, game.turn, aiTradeProposal]);
 
@@ -1020,7 +1025,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       const giveStr = RESOURCES.filter(r => (counterOffering[r] || 0) > 0).map(r => `${counterOffering[r]}${HEX_ICON[r]}`).join(' ');
       const getStr = RESOURCES.filter(r => (counterRequesting[r] || 0) > 0).map(r => `${counterRequesting[r]}${HEX_ICON[r]}`).join(' ');
       addLog(traded, `${aiName} accepted counter: gave ${giveStr} for ${getStr}`);
-      return aiDoFullTurn(traded);
+      const result = aiDoFullTurn(traded);
+      aiTurnInProgressRef.current = false;
+      return result;
     });
   };
 
@@ -1056,7 +1063,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       const giveStr = (Object.keys(offering) as Resource[]).map(r => `${offering[r]}${HEX_ICON[r as Resource]}`).join(' ');
       const getStr = (Object.keys(requesting) as Resource[]).map(r => `${requesting[r]}${HEX_ICON[r as Resource]}`).join(' ');
       addLog(traded, `${aiName} traded ${giveStr} with you for ${getStr}`);
-      return aiDoFullTurn(traded);
+      const result = aiDoFullTurn(traded);
+      aiTurnInProgressRef.current = false;
+      return result;
     });
   };
 
@@ -1066,7 +1075,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setAiTradeProposal(null);
     setCounterMode(false);
     setCounterResult(null);
-    setGame(() => aiDoFullTurn(pendingState));
+    setGame(() => {
+      const result = aiDoFullTurn(pendingState);
+      aiTurnInProgressRef.current = false;
+      return result;
+    });
   };
 
   const handleBuyDevCard = () => {
