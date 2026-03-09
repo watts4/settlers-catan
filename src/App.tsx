@@ -23,8 +23,30 @@ interface AppProps {
 
 // ── Dice face helper ─────────────────────────────────────────────────────────
 
-const DICE_FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-function dieFace(n: number): string { return DICE_FACES[n] || '?'; }
+// Dot positions for each die face on a 3x3 grid (row, col) where 0=top/left, 1=center, 2=bottom/right
+const DOT_POSITIONS: Record<number, [number, number][]> = {
+  1: [[1,1]],
+  2: [[0,2],[2,0]],
+  3: [[0,2],[1,1],[2,0]],
+  4: [[0,0],[0,2],[2,0],[2,2]],
+  5: [[0,0],[0,2],[1,1],[2,0],[2,2]],
+  6: [[0,0],[0,2],[1,0],[1,2],[2,0],[2,2]],
+};
+
+function DiceDots({ value }: { value: number | null }) {
+  if (!value) return <>?</>;
+  const dots = DOT_POSITIONS[value] || [];
+  return (
+    <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr 1fr', gridTemplateColumns: '1fr 1fr 1fr', width: '100%', height: '100%', padding: '6px', boxSizing: 'border-box' }}>
+      {[0,1,2].map(r => [0,1,2].map(c => {
+        const hasDot = dots.some(([dr, dc]) => dr === r && dc === c);
+        return <div key={`${r}${c}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {hasDot && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#222' }} />}
+        </div>;
+      }))}
+    </div>
+  );
+}
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────
 
@@ -2112,10 +2134,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 title={needsRoll ? 'Roll Dice' : game.dice ? `${game.dice[0]} + ${game.dice[1]} = ${game.dice[0] + game.dice[1]}` : ''}
               >
                 <span className={dieClass('')}>
-                  {isRolling ? dieFace(animDice[0]) : game.dice ? dieFace(game.dice[0]) : '?'}
+                  <DiceDots value={isRolling ? animDice[0] : game.dice ? game.dice[0] : null} />
                 </span>
                 <span className={dieClass('')}>
-                  {isRolling ? dieFace(animDice[1]) : game.dice ? dieFace(game.dice[1]) : '?'}
+                  <DiceDots value={isRolling ? animDice[1] : game.dice ? game.dice[1] : null} />
                 </span>
               </button>
             );
