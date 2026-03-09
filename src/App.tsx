@@ -268,7 +268,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [devHandAtTurnStart, setDevHandAtTurnStart] = useState<Record<string, number>>({});
   const [playerTradeOffer, setPlayerTradeOffer] = useState<Partial<Record<Resource, number>>>({});
   const [playerTradeRequest, setPlayerTradeRequest] = useState<Partial<Record<Resource, number>>>({});
-  const [playerTradeResponses, setPlayerTradeResponses] = useState<{ playerId: number; accepts: boolean }[]>([]);
+  const [playerTradeResponses, setPlayerTradeResponses] = useState<{ playerId: number; accepts: boolean; isPending?: boolean }[]>([]);
   const [isRolling, setIsRolling] = useState(false);
   const [animDice, setAnimDice] = useState<[number, number]>([1, 1]);
   const [flashDice, setFlashDice] = useState<[number, number] | null>(null);
@@ -295,6 +295,20 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [counterOffering, setCounterOffering] = useState<Partial<Record<Resource, number>>>({});
   const [counterRequesting, setCounterRequesting] = useState<Partial<Record<Resource, number>>>({});
   const [counterResult, setCounterResult] = useState<'accepted' | 'declined' | null>(null);
+
+  // Multiplayer: incoming trade offer from another human player
+  const [incomingHumanTrade, setIncomingHumanTrade] = useState<{
+    fromPlayer: number;
+    offering: Partial<Record<Resource, number>>;
+    requesting: Partial<Record<Resource, number>>;
+  } | null>(null);
+  // Ref mirror of aiTradeProposal for use in effects without stale-closure issues
+  const aiTradeProposalRef = useRef<typeof aiTradeProposal>(null);
+  // Refs to track pending trade IDs across Firestore updates
+  const prevPendingAiTradeIdRef = useRef<string | null>(null);
+  const prevPendingHumanTradeIdRef = useRef<string | null>(null);
+  // Tracks a human trade that WE proposed (so we know when it gets resolved)
+  const myPendingHumanTradeIdRef = useRef<string | null>(null);
 
   // Discard UI state — shown when a 7 is rolled and human has 8+ cards
   const [humanDiscardPending, setHumanDiscardPending] = useState<{ toDiscard: number } | null>(null);
@@ -534,7 +548,18 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         // Show trade proposal after dice flash animation finishes
         setTimeout(() => {
           pendingTradeRef.current = false;
+          const tradeId = `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`;
           setAiTradeProposal(tradeData);
+          // Embed trade in game state so Firestore syncs it to all clients
+          setGame(prev => ({
+            ...prev,
+            pendingAiTrade: {
+              tradeId,
+              fromPlayer: aiPlayerId,
+              offering: { [offer]: 1 } as Partial<Record<Resource, number>>,
+              requesting: { [request]: 1 } as Partial<Record<Resource, number>>,
+            },
+          }));
         }, 1400);
         return;
       }
@@ -562,12 +587,88 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.currentPlayer, game.phase, game.turn, aiTradeProposal]);
 
+  // Keep ref in sync with aiTradeProposal state (for use in effects)
+  useEffect(() => { aiTradeProposalRef.current = aiTradeProposal; }, [aiTradeProposal]);
+
   // Auto-open player trade modal when an AI trade proposal arrives
   useEffect(() => {
     if (aiTradeProposal) {
       setPlayerTradeModalOpen(true);
     }
   }, [aiTradeProposal]);
+
+  // Multiplayer: non-host clients detect AI trade proposals from synced game state
+  useEffect(() => {
+    if (!multiplayerConfig) return;
+    const pending = game.pendingAiTrade;
+    if (pending && pending.tradeId !== prevPendingAiTradeIdRef.current) {
+      prevPendingAiTradeIdRef.current = pending.tradeId;
+      if (!multiplayerConfig.isHost) {
+        // Show the AI trade modal on non-host clients
+        setAiTradeProposal({
+          fromPlayer: pending.fromPlayer,
+          offering: pending.offering,
+          requesting: pending.requesting,
+          pendingState: game,
+        });
+      }
+    } else if (!pending && prevPendingAiTradeIdRef.current) {
+      prevPendingAiTradeIdRef.current = null;
+      // Trade was resolved externally — close modal if it was showing an AI trade
+      if (aiTradeProposalRef.current) {
+        setAiTradeProposal(null);
+        setCounterMode(false);
+        setCounterResult(null);
+        setPlayerTradeModalOpen(false);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.pendingAiTrade]);
+
+  // Multiplayer host: resume AI turn after a non-host resolved the AI trade
+  useEffect(() => {
+    if (!multiplayerConfig?.isHost) return;
+    if (!game.pendingAiTurn) return;
+    setAiTradeProposal(null);
+    setCounterMode(false);
+    setCounterResult(null);
+    setGame(prev => {
+      const stateToProcess = { ...prev, pendingAiTurn: false };
+      const result = aiDoFullTurn(stateToProcess);
+      aiTurnInProgressRef.current = false;
+      return result;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.pendingAiTurn]);
+
+  // Multiplayer: detect incoming human trade proposals from synced game state
+  useEffect(() => {
+    if (!multiplayerConfig) return;
+    const pending = game.pendingHumanTrade;
+    if (pending && pending.tradeId !== prevPendingHumanTradeIdRef.current) {
+      prevPendingHumanTradeIdRef.current = pending.tradeId;
+      // Show incoming trade modal to all human players except the offerer
+      if (pending.fromPlayer !== multiplayerConfig.mySlot) {
+        setIncomingHumanTrade({
+          fromPlayer: pending.fromPlayer,
+          offering: pending.offering,
+          requesting: pending.requesting,
+        });
+      }
+    } else if (!pending && prevPendingHumanTradeIdRef.current) {
+      prevPendingHumanTradeIdRef.current = null;
+      setIncomingHumanTrade(null);
+      // If WE were the offerer, close our responses view
+      if (myPendingHumanTradeIdRef.current) {
+        myPendingHumanTradeIdRef.current = null;
+        setPlayerTradeResponses([]);
+        setPlayerTradeOffer({});
+        setPlayerTradeRequest({});
+        setPlayerTradeModalOpen(false);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.pendingHumanTrade]);
 
   // ── Multiplayer discard: watch playersToDiscard from game state ───────────
   useEffect(() => {
@@ -930,15 +1031,35 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     const totalOff = RESOURCES.reduce((s, r) => s + (playerTradeOffer[r] || 0), 0);
     const totalReq = RESOURCES.reduce((s, r) => s + (playerTradeRequest[r] || 0), 0);
     if (totalOff === 0 || totalReq === 0) return;
-    const responses = game.players
+    // AI responses are immediate
+    const aiResponses: { playerId: number; accepts: boolean; isPending?: boolean }[] = game.players
       .filter(p => !p.isHuman)
       .map(p => {
         const hasAll = RESOURCES.every(r => (p.resources[r] || 0) >= (playerTradeRequest[r] || 0));
-        // AI declines if they'd give away too much relative to what they get
         const accepts = hasAll && totalOff > 0;
         return { playerId: p.id, accepts };
       });
-    setPlayerTradeResponses(responses);
+    if (multiplayerConfig) {
+      // In multiplayer: also broadcast to human opponents via game state
+      const humanOpponents = game.players.filter(p => p.isHuman && p.id !== multiplayerConfig.mySlot);
+      const humanResponses = humanOpponents.map(p => ({ playerId: p.id, accepts: false, isPending: true }));
+      setPlayerTradeResponses([...aiResponses, ...humanResponses]);
+      if (humanOpponents.length > 0) {
+        const tradeId = `human-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        myPendingHumanTradeIdRef.current = tradeId;
+        setGame(prev => ({
+          ...prev,
+          pendingHumanTrade: {
+            tradeId,
+            fromPlayer: multiplayerConfig.mySlot,
+            offering: { ...playerTradeOffer },
+            requesting: { ...playerTradeRequest },
+          },
+        }));
+      }
+    } else {
+      setPlayerTradeResponses(aiResponses);
+    }
   };
 
   const handleExecutePlayerTrade = (fromPlayerId: number) => {
@@ -1008,11 +1129,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setAiTradeProposal(null);
     setCounterMode(false);
     setCounterResult(null);
-    setGame(() => {
-      const humanId = pendingState.players.find(p => p.isHuman && (multiplayerConfig ? p.id === multiplayerConfig.mySlot : true))?.id ?? 0;
-      const traded: GameState = {
-        ...pendingState,
-        players: pendingState.players.map(p => {
+    if (multiplayerConfig && !multiplayerConfig.isHost) {
+      // Non-host: apply counter trade and signal host to resume AI turn
+      const humanId = multiplayerConfig.mySlot;
+      setGame(prev => {
+        if (!prev.pendingAiTrade) return prev; // already resolved
+        const newPlayers = prev.players.map(p => {
           const res = { ...p.resources };
           if (p.id === fromPlayer) {
             RESOURCES.forEach(r => { res[r] = (res[r] || 0) - (counterOffering[r] || 0) + (counterRequesting[r] || 0); });
@@ -1020,16 +1142,40 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             RESOURCES.forEach(r => { res[r] = (res[r] || 0) + (counterOffering[r] || 0) - (counterRequesting[r] || 0); });
           }
           return { ...p, resources: res };
-        }),
-      };
-      const aiName = pendingState.players[fromPlayer].name;
-      const giveStr = RESOURCES.filter(r => (counterOffering[r] || 0) > 0).map(r => `${counterOffering[r]}${HEX_ICON[r]}`).join(' ');
-      const getStr = RESOURCES.filter(r => (counterRequesting[r] || 0) > 0).map(r => `${counterRequesting[r]}${HEX_ICON[r]}`).join(' ');
-      addLog(traded, `${aiName} accepted counter: gave ${giveStr} for ${getStr}`);
-      const result = aiDoFullTurn(traded);
-      aiTurnInProgressRef.current = false;
-      return result;
-    });
+        });
+        const aiName = prev.players[fromPlayer].name;
+        const giveStr = RESOURCES.filter(r => (counterOffering[r] || 0) > 0).map(r => `${counterOffering[r]}${HEX_ICON[r]}`).join(' ');
+        const getStr = RESOURCES.filter(r => (counterRequesting[r] || 0) > 0).map(r => `${counterRequesting[r]}${HEX_ICON[r]}`).join(' ');
+        const traded: GameState = { ...prev, players: newPlayers, pendingAiTrade: null, pendingAiTurn: true };
+        addLog(traded, `${aiName} accepted counter: gave ${giveStr} for ${getStr}`);
+        return traded;
+      });
+    } else {
+      // Host or solo: apply counter and complete AI turn immediately
+      setGame(prev => {
+        const humanId = multiplayerConfig ? multiplayerConfig.mySlot : (pendingState.players.find(p => p.isHuman)?.id ?? 0);
+        const traded: GameState = {
+          ...prev,
+          pendingAiTrade: null,
+          players: prev.players.map(p => {
+            const res = { ...p.resources };
+            if (p.id === fromPlayer) {
+              RESOURCES.forEach(r => { res[r] = (res[r] || 0) - (counterOffering[r] || 0) + (counterRequesting[r] || 0); });
+            } else if (p.id === humanId) {
+              RESOURCES.forEach(r => { res[r] = (res[r] || 0) + (counterOffering[r] || 0) - (counterRequesting[r] || 0); });
+            }
+            return { ...p, resources: res };
+          }),
+        };
+        const aiName = prev.players[fromPlayer].name;
+        const giveStr = RESOURCES.filter(r => (counterOffering[r] || 0) > 0).map(r => `${counterOffering[r]}${HEX_ICON[r]}`).join(' ');
+        const getStr = RESOURCES.filter(r => (counterRequesting[r] || 0) > 0).map(r => `${counterRequesting[r]}${HEX_ICON[r]}`).join(' ');
+        addLog(traded, `${aiName} accepted counter: gave ${giveStr} for ${getStr}`);
+        const result = aiDoFullTurn(traded);
+        aiTurnInProgressRef.current = false;
+        return result;
+      });
+    }
   };
 
   const handleBackToOriginal = () => {
@@ -1041,33 +1187,60 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     if (!aiTradeProposal) return;
     const { fromPlayer, offering, requesting, pendingState } = aiTradeProposal;
     setAiTradeProposal(null);
-    // Apply the trade: human gives `requesting`, AI gives `offering`
-    setGame(() => {
-      const humanId = multiplayerConfig ? multiplayerConfig.mySlot : (pendingState.players.find(p => p.isHuman)?.id ?? 0);
-      const traded: GameState = {
-        ...pendingState,
-        players: pendingState.players.map(p => {
+    setCounterMode(false);
+    setCounterResult(null);
+    if (multiplayerConfig && !multiplayerConfig.isHost) {
+      // Non-host: apply trade locally and signal host to resume the AI turn
+      const humanId = multiplayerConfig.mySlot;
+      setGame(prev => {
+        if (!prev.pendingAiTrade) return prev; // already resolved by another player
+        const newPlayers = prev.players.map(p => {
           const res = { ...p.resources };
           if (p.id === fromPlayer) {
-            // AI loses what it offered, gains what it requested
             (Object.keys(offering) as Resource[]).forEach(r => { res[r] = (res[r] || 0) - (offering[r] || 0); });
             (Object.keys(requesting) as Resource[]).forEach(r => { res[r] = (res[r] || 0) + (requesting[r] || 0); });
           } else if (p.id === humanId) {
-            // Human gains what AI offered, loses what AI requested
             (Object.keys(offering) as Resource[]).forEach(r => { res[r] = (res[r] || 0) + (offering[r] || 0); });
             (Object.keys(requesting) as Resource[]).forEach(r => { res[r] = (res[r] || 0) - (requesting[r] || 0); });
           }
           return { ...p, resources: res };
-        }),
-      };
-      const aiName = pendingState.players[fromPlayer].name;
-      const giveStr = (Object.keys(offering) as Resource[]).map(r => `${offering[r]}${HEX_ICON[r as Resource]}`).join(' ');
-      const getStr = (Object.keys(requesting) as Resource[]).map(r => `${requesting[r]}${HEX_ICON[r as Resource]}`).join(' ');
-      addLog(traded, `${aiName} traded ${giveStr} with you for ${getStr}`);
-      const result = aiDoFullTurn(traded);
-      aiTurnInProgressRef.current = false;
-      return result;
-    });
+        });
+        const aiName = prev.players[fromPlayer].name;
+        const myName = prev.players[humanId].name;
+        const giveStr = (Object.keys(offering) as Resource[]).map(r => `${offering[r]}${HEX_ICON[r as Resource]}`).join(' ');
+        const getStr = (Object.keys(requesting) as Resource[]).map(r => `${requesting[r]}${HEX_ICON[r as Resource]}`).join(' ');
+        const traded: GameState = { ...prev, players: newPlayers, pendingAiTrade: null, pendingAiTurn: true };
+        addLog(traded, `${aiName} traded ${giveStr} with ${myName} for ${getStr}`);
+        return traded;
+      });
+    } else {
+      // Host or solo: apply trade and immediately complete AI turn
+      setGame(prev => {
+        const humanId = multiplayerConfig ? multiplayerConfig.mySlot : (prev.players.find(p => p.isHuman)?.id ?? 0);
+        const traded: GameState = {
+          ...prev,
+          pendingAiTrade: null,
+          players: prev.players.map(p => {
+            const res = { ...p.resources };
+            if (p.id === fromPlayer) {
+              (Object.keys(offering) as Resource[]).forEach(r => { res[r] = (res[r] || 0) - (offering[r] || 0); });
+              (Object.keys(requesting) as Resource[]).forEach(r => { res[r] = (res[r] || 0) + (requesting[r] || 0); });
+            } else if (p.id === humanId) {
+              (Object.keys(offering) as Resource[]).forEach(r => { res[r] = (res[r] || 0) + (offering[r] || 0); });
+              (Object.keys(requesting) as Resource[]).forEach(r => { res[r] = (res[r] || 0) - (requesting[r] || 0); });
+            }
+            return { ...p, resources: res };
+          }),
+        };
+        const aiName = prev.players[fromPlayer].name;
+        const giveStr = (Object.keys(offering) as Resource[]).map(r => `${offering[r]}${HEX_ICON[r as Resource]}`).join(' ');
+        const getStr = (Object.keys(requesting) as Resource[]).map(r => `${requesting[r]}${HEX_ICON[r as Resource]}`).join(' ');
+        addLog(traded, `${aiName} traded ${giveStr} with you for ${getStr}`);
+        const result = aiDoFullTurn(traded);
+        aiTurnInProgressRef.current = false;
+        return result;
+      });
+    }
   };
 
   const handleDeclineAiTrade = () => {
@@ -1076,11 +1249,58 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setAiTradeProposal(null);
     setCounterMode(false);
     setCounterResult(null);
-    setGame(() => {
-      const result = aiDoFullTurn(pendingState);
-      aiTurnInProgressRef.current = false;
-      return result;
+    if (multiplayerConfig && !multiplayerConfig.isHost) {
+      // Non-host: clear the trade and signal host to resume AI turn without a trade
+      setGame(prev => ({
+        ...prev,
+        pendingAiTrade: null,
+        pendingAiTurn: true,
+      }));
+    } else {
+      // Host or solo: resume AI turn immediately
+      setGame(() => {
+        const result = aiDoFullTurn({ ...pendingState, pendingAiTrade: null });
+        aiTurnInProgressRef.current = false;
+        return result;
+      });
+    }
+  };
+
+  // Accept an incoming human-to-human trade offer (non-offering player)
+  const handleAcceptIncomingHumanTrade = () => {
+    if (!incomingHumanTrade || !multiplayerConfig) return;
+    const { fromPlayer, offering, requesting } = incomingHumanTrade;
+    const mySlot = multiplayerConfig.mySlot;
+    setGame(prev => {
+      if (!prev.pendingHumanTrade) return prev; // already resolved by another player
+      const myPlayer = prev.players[mySlot];
+      const canAffordTrade = RESOURCES.every(r => (myPlayer.resources[r] || 0) >= (requesting[r] || 0));
+      if (!canAffordTrade) return prev; // can't afford (resources may have changed)
+      const newPlayers = prev.players.map(p => {
+        const res = { ...p.resources };
+        if (p.id === fromPlayer) {
+          // Offerer loses what they offered, gains what they wanted
+          RESOURCES.forEach(r => { res[r] = (res[r] || 0) - (offering[r] || 0) + (requesting[r] || 0); });
+        } else if (p.id === mySlot) {
+          // Acceptor gains what was offered, loses what was requested
+          RESOURCES.forEach(r => { res[r] = (res[r] || 0) + (offering[r] || 0) - (requesting[r] || 0); });
+        }
+        return { ...p, resources: res };
+      });
+      const fromName = prev.players[fromPlayer].name;
+      const myName = prev.players[mySlot].name;
+      const offerStr = RESOURCES.filter(r => (offering[r] || 0) > 0).map(r => `${offering[r]}${HEX_ICON[r]}`).join(' ');
+      const reqStr = RESOURCES.filter(r => (requesting[r] || 0) > 0).map(r => `${requesting[r]}${HEX_ICON[r]}`).join(' ');
+      const newGame = { ...prev, players: newPlayers, pendingHumanTrade: null };
+      addLog(newGame, `${fromName} traded ${offerStr} with ${myName} for ${reqStr}`);
+      return newGame;
     });
+    setIncomingHumanTrade(null);
+  };
+
+  // Decline an incoming human trade offer (just closes the modal locally)
+  const handleDeclineIncomingHumanTrade = () => {
+    setIncomingHumanTrade(null);
   };
 
   const handleBuyDevCard = () => {
@@ -1940,7 +2160,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               setPlayerTradeOffer({});
               setPlayerTradeRequest({});
               setPlayerTradeResponses([]);
-              // Don't auto-decline — keep glow so user can reopen
+              // If we had a pending human trade proposal, cancel it
+              if (myPendingHumanTradeIdRef.current) {
+                myPendingHumanTradeIdRef.current = null;
+                setGame(prev => ({ ...prev, pendingHumanTrade: null }));
+              }
+              // Don't auto-decline AI trade — keep glow so user can reopen
             };
             const isIncoming = !!aiTradeProposal;
             const tapCell = (r: Resource, count: number, onTap: () => void, accent: string) => (
@@ -2110,19 +2335,27 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                         Getting: {RESOURCES.filter(r => playerTradeRequest[r]).map(r => `${playerTradeRequest[r]}${HEX_ICON[r]}`).join(' ')}
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
-                        {playerTradeResponses.map(({ playerId, accepts }) => {
+                        {playerTradeResponses.map(({ playerId, accepts, isPending }) => {
                           const p = game.players[playerId];
                           return (
                             <div key={playerId} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#1e2e3e', borderRadius: '8px', padding: '10px 14px' }}>
                               <span style={{ color: p.color, fontWeight: 'bold', flex: 1 }}>{p.name}</span>
-                              {accepts
-                                ? <button onClick={() => handleExecutePlayerTrade(playerId)} style={{ padding: '6px 16px', background: '#27ae60', border: 'none', borderRadius: '7px', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>✓ Trade!</button>
-                                : <span style={{ color: '#666', fontSize: '0.85rem' }}>✗ Declines</span>}
+                              {isPending
+                                ? <span style={{ color: '#f39c12', fontSize: '0.85rem' }}>⏳ Thinking…</span>
+                                : accepts
+                                  ? <button onClick={() => handleExecutePlayerTrade(playerId)} style={{ padding: '6px 16px', background: '#27ae60', border: 'none', borderRadius: '7px', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>✓ Trade!</button>
+                                  : <span style={{ color: '#666', fontSize: '0.85rem' }}>✗ Declines</span>}
                             </div>
                           );
                         })}
                       </div>
-                      <button onClick={() => { setPlayerTradeResponses([]); }}
+                      <button onClick={() => {
+                        if (myPendingHumanTradeIdRef.current) {
+                          myPendingHumanTradeIdRef.current = null;
+                          setGame(prev => ({ ...prev, pendingHumanTrade: null }));
+                        }
+                        setPlayerTradeResponses([]);
+                      }}
                         style={{ padding: '8px 16px', background: '#2a3a4a', border: 'none', borderRadius: '8px', color: '#aaa', cursor: 'pointer', fontSize: '0.85rem' }}>
                         ← Edit Offer
                       </button>
@@ -2171,6 +2404,65 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                       </button>
                     </div>
                   )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Incoming Human Trade Modal — shown to non-offering players in multiplayer */}
+          {incomingHumanTrade && multiplayerConfig && (() => {
+            const fromPlayer = game.players[incomingHumanTrade.fromPlayer];
+            const myPlayer = game.players[multiplayerConfig.mySlot];
+            const canAffordTrade = RESOURCES.every(r => (myPlayer.resources[r] || 0) >= (incomingHumanTrade.requesting[r] || 0));
+            return (
+              <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+                <div style={{ background: '#1a2332', border: `2px solid ${fromPlayer.color}`, borderRadius: '16px', padding: '20px', maxWidth: '420px', width: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.7)' }}>
+                  <h3 style={{ margin: '0 0 4px', color: '#ffd700', fontSize: '1.1rem' }}>🤝 Trade Offer</h3>
+                  <div style={{ fontWeight: 'bold', marginBottom: '16px', color: fromPlayer.color, fontSize: '0.95rem' }}>
+                    {fromPlayer.name} wants to trade!
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                    <div style={{ flex: 1, background: '#0a2218', border: '1px solid #27ae6055', borderRadius: '12px', padding: '12px 10px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#8899aa', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase' }}>They Give You</div>
+                      <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                        {RESOURCES.filter(r => (incomingHumanTrade.offering[r] || 0) > 0).map(r => (
+                          <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                            <span style={{ fontSize: '2rem' }}>{HEX_ICON[r]}</span>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#27ae60' }}>+{incomingHumanTrade.offering[r]}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ flex: 1, background: '#2a1a08', border: '1px solid #e67e2255', borderRadius: '12px', padding: '12px 10px', textAlign: 'center' }}>
+                      <div style={{ fontSize: '0.65rem', color: '#8899aa', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase' }}>You Give</div>
+                      <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                        {RESOURCES.filter(r => (incomingHumanTrade.requesting[r] || 0) > 0).map(r => (
+                          <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                            <span style={{ fontSize: '2rem' }}>{HEX_ICON[r]}</span>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#e67e22' }}>+{incomingHumanTrade.requesting[r]}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  {!canAffordTrade && (
+                    <div style={{ fontSize: '0.8rem', color: '#e74c3c', marginBottom: '10px', textAlign: 'center' }}>
+                      You don't have the required resources.
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={handleAcceptIncomingHumanTrade}
+                      disabled={!canAffordTrade}
+                      style={{ flex: 1, border: 'none', borderRadius: '8px', color: '#fff', fontWeight: 'bold', padding: '11px', fontSize: '0.95rem', background: canAffordTrade ? '#27ae60' : '#555', cursor: canAffordTrade ? 'pointer' : 'not-allowed' }}>
+                      ✓ Accept
+                    </button>
+                    <button
+                      onClick={handleDeclineIncomingHumanTrade}
+                      style={{ flex: 1, border: 'none', borderRadius: '8px', color: '#fff', fontWeight: 'bold', padding: '11px', fontSize: '0.95rem', background: '#7b1a1a', cursor: 'pointer' }}>
+                      ✗ Decline
+                    </button>
+                  </div>
                 </div>
               </div>
             );
