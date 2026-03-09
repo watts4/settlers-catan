@@ -231,6 +231,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [playerTradeResponses, setPlayerTradeResponses] = useState<{ playerId: number; accepts: boolean }[]>([]);
   const [isRolling, setIsRolling] = useState(false);
   const [animDice, setAnimDice] = useState<[number, number]>([1, 1]);
+  const [flashDice, setFlashDice] = useState<[number, number] | null>(null);
   // AI-initiated trade proposal — shown to human during AI's turn
   const [aiTradeProposal, setAiTradeProposal] = useState<{
     fromPlayer: number;
@@ -401,6 +402,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           }
         }
         addLog(afterRoll, `${prev.players[aiPlayerId].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
+        showDiceFlash(dice);
 
         // If human needs to discard, pause here — show discard UI
         if (humanNeedsDiscard) {
@@ -625,6 +627,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     return () => clearInterval(id);
   }, [isRolling]);
 
+  const showDiceFlash = useCallback((dice: [number, number]) => {
+    setFlashDice(dice);
+    setTimeout(() => setFlashDice(null), 1200);
+  }, []);
+
   const handleRollDice = () => {
     if (isRolling) return;
     const dice = rollDice();
@@ -640,6 +647,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
     setTimeout(() => {
       setIsRolling(false);
+      showDiceFlash(dice);
       setGame(prev => {
         const newGame = { ...prev, dice };
         if (sum !== 7) {
@@ -2278,6 +2286,20 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           ))}
         </div>
       </div> */}
+
+      {/* Dice flash overlay */}
+      {flashDice && (
+        <div className="dice-flash-overlay">
+          <div className="dice-flash-container">
+            <div className="dice-flash-die">
+              <DiceDots value={flashDice[0]} />
+            </div>
+            <div className="dice-flash-die">
+              <DiceDots value={flashDice[1]} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Game Over overlay */}
       {game.winner !== null && (

@@ -420,6 +420,55 @@ body {
   color: #bdc3c7;
 }
 
+/* Dice flash overlay */
+.dice-flash-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 900;
+  pointer-events: none;
+  animation: dice-flash-fade 1.2s ease-out forwards;
+}
+
+.dice-flash-container {
+  display: flex;
+  gap: 20px;
+  animation: dice-flash-pop 1.2s ease-out forwards;
+}
+
+.dice-flash-die {
+  width: 90px;
+  height: 90px;
+  background: white;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 40px rgba(255,215,0,0.5), 0 0 60px rgba(255,215,0,0.3);
+}
+
+.dice-flash-die > div > div > div > div {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+@keyframes dice-flash-pop {
+  0%   { transform: scale(0.3); opacity: 0; }
+  15%  { transform: scale(1.15); opacity: 1; }
+  30%  { transform: scale(1.0); opacity: 1; }
+  75%  { transform: scale(1.0); opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+@keyframes dice-flash-fade {
+  0%   { background: rgba(0,0,0,0); }
+  15%  { background: rgba(0,0,0,0.4); }
+  75%  { background: rgba(0,0,0,0.4); }
+  100% { background: rgba(0,0,0,0); }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .game {
