@@ -98,7 +98,7 @@ body {
   position: relative;
   background: linear-gradient(135deg, #654321 0%, #8b4513 50%, #654321 100%);
   border-radius: 15px;
-  padding: 30px;
+  padding: 30px 30px 60px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 2px 4px rgba(255,255,255,0.1);
 }
 
@@ -486,7 +486,7 @@ body {
   }
 
   .board-container {
-    padding: 8px;
+    padding: 8px 8px 50px;
     border-radius: 10px;
     overflow: hidden;
   }
