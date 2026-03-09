@@ -21,6 +21,11 @@ interface AppProps {
   onLeaveGame?: () => void;
 }
 
+// ── Dice face helper ─────────────────────────────────────────────────────────
+
+const DICE_FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+function dieFace(n: number): string { return DICE_FACES[n] || '?'; }
+
 // ── Geometry helpers ──────────────────────────────────────────────────────────
 
 function distSq(ax: number, ay: number, bx: number, by: number) {
@@ -2107,14 +2112,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 title={needsRoll ? 'Roll Dice' : game.dice ? `${game.dice[0]} + ${game.dice[1]} = ${game.dice[0] + game.dice[1]}` : ''}
               >
                 <span className={dieClass('')}>
-                  {isRolling ? animDice[0] : game.dice ? game.dice[0] : '?'}
+                  {isRolling ? dieFace(animDice[0]) : game.dice ? dieFace(game.dice[0]) : '?'}
                 </span>
                 <span className={dieClass('')}>
-                  {isRolling ? animDice[1] : game.dice ? game.dice[1] : '?'}
+                  {isRolling ? dieFace(animDice[1]) : game.dice ? dieFace(game.dice[1]) : '?'}
                 </span>
-                {game.dice && !isRolling && (
-                  <span className="floating-dice-sum">={game.dice[0] + game.dice[1]}</span>
-                )}
               </button>
             );
           })()}
