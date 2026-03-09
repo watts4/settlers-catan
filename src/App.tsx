@@ -1484,7 +1484,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       <div className="player-bar">
         {game.players.map(player => (
           <div key={player.id} className={`player-card ${player.id === game.currentPlayer ? 'active' : ''}`}
-            style={{ borderColor: player.color }}>
+            style={{ '--player-color': player.color } as React.CSSProperties}>
             <div className="player-name" style={{ color: player.color }}>{player.name}</div>
             <div className="player-vp">
               VP: {getDisplayVP(player)}
