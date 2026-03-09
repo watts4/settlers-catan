@@ -1369,7 +1369,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   };
 
   const getDisplayVP = (p: typeof currentPlayer) => calculateVP(p, game);
-  const setupOrder = game.phase === 'setup1' ? [0,1,2,3] : game.phase === 'setup2' ? [3,2,1,0] : [];
 
   // ── JSX ──────────────────────────────────────────────────────────────────────
 
@@ -1388,7 +1387,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           {/* Center: turn info */}
           <div className="turn-info" style={{ margin: 0, flex: 1, textAlign: 'center' }}>
             {isSetup
-              ? `Setup ${game.phase === 'setup1' ? '(Round 1 →)' : '(Round 2 ←)'} — ${currentPlayer?.name}`
+              ? isMyTurn
+                ? game.setupStep === 'settlement'
+                  ? 'Place your settlement on a green spot'
+                  : 'Place a road next to your settlement'
+                : `${currentPlayer?.name} is placing…`
               : `Turn ${game.turn} | ${currentPlayer?.name}'s Turn`}
           </div>
 
@@ -2117,42 +2120,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           })()}
         </div>
 
-        {/* Action Panel */}
-        <div className="action-panel">
-          {isSetup ? (
-            <>
-              <h3>🏗️ Setup Phase</h3>
-              <div style={{ background: '#1a2a3a', borderRadius: '8px', padding: '12px', marginBottom: '15px' }}>
-                <div style={{ marginBottom: '8px', fontSize: '0.9rem', color: '#aaa' }}>
-                  {game.phase === 'setup1' ? 'Round 1 — Clockwise ➜' : 'Round 2 — Counter-clockwise ←'}
-                </div>
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  {setupOrder.map(pid => (
-                    <span key={pid} style={{
-                      padding: '4px 10px', borderRadius: '6px',
-                      background: pid === game.currentPlayer ? game.players[pid].color : 'rgba(255,255,255,0.1)',
-                      color: pid === game.currentPlayer ? '#000' : game.players[pid].color,
-                      fontWeight: pid === game.currentPlayer ? 'bold' : 'normal',
-                      border: `2px solid ${game.players[pid].color}`, fontSize: '0.85rem',
-                    }}>{game.players[pid].name}</span>
-                  ))}
-                </div>
-              </div>
-              {isMyTurn ? (
-                <div style={{ padding: '12px', background: '#27ae60', borderRadius: '8px', textAlign: 'center' }}>
-                  <strong>
-                    {game.setupStep === 'settlement'
-                      ? '🏠 Click a green spot to place your settlement'
-                      : '🛣️ Click a road spot adjacent to your settlement'}
-                  </strong>
-                </div>
-              ) : (
-                <div style={{ padding: '12px', background: '#2c3e50', borderRadius: '8px', textAlign: 'center', color: '#aaa' }}>
-                  {isHumanTurn && multiplayerConfig ? `⏳ Waiting for ${currentPlayer?.name}…` : `⏳ ${currentPlayer?.name} is placing…`}
-                </div>
-              )}
-            </>
-          ) : isHumanTurn && multiplayerConfig && !isMyTurn ? (
+        {/* Action Panel — hidden during setup */}
+        {!isSetup && <div className="action-panel">
+          {isHumanTurn && multiplayerConfig && !isMyTurn ? (
             // Multiplayer: another human player's turn — show waiting message
             <div style={{ padding: '20px', background: '#1a2a3a', borderRadius: '8px', textAlign: 'center' }}>
               <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⏳</div>
@@ -2266,7 +2236,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               </button>
             </>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Game Log — hidden during normal gameplay */}
