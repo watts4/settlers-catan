@@ -247,6 +247,10 @@ function computeResourceGains(state: GameState, diceSum: number): ResourceGain[]
 
 function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [game, setGame] = useState<GameState>(initialGameState ?? createInitialGameState());
+  // Ref mirror of game state — allows synchronous reads outside React's render cycle
+  // (e.g. inside setTimeout callbacks and executeAITurn which must not rely on setGame updaters)
+  const gameRef = useRef(game);
+  useEffect(() => { gameRef.current = game; }, [game]);
   const [buildingMode, setBuildingMode] = useState<'road' | 'settlement' | 'city' | null>(null);
   const [tradeOffer, setTradeOffer] = useState<Partial<Record<Resource, number>>>({});
   const [tradeRequest, setTradeRequest] = useState<Partial<Record<Resource, number>>>({});
@@ -456,11 +460,18 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const AI_TURN_DELAY = 1800;
 
   const executeAITurn = useCallback((aiPlayerId: number) => {
-    // Prevent concurrent AI turn execution (race between useEffect re-trigger + timers)
+    // Prevent concurrent AI turn execution
     if (aiTurnInProgressRef.current) return;
     aiTurnInProgressRef.current = true;
 
-    // Roll dice outside setGame to avoid StrictMode double-roll
+    // Read current state synchronously via ref (NOT inside setGame updater)
+    const prev = gameRef.current;
+    if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) {
+      aiTurnInProgressRef.current = false;
+      return;
+    }
+
+    // Roll dice
     const dice = rollDice();
     const sum = dice[0] + dice[1];
 
@@ -471,80 +482,70 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setFlashDice(null);
     setFlyingResources([]);
 
-    // Compute resource gains for fly animation (uses current game for board positions)
-    const gains = sum !== 7 ? computeResourceGains(game, sum) : [];
+    // Compute resource gains for fly animation
+    const gains = sum !== 7 ? computeResourceGains(prev, sum) : [];
     showDiceFlash(dice);
     if (gains.length > 0) showResourceGains(gains);
 
-    // Track whether we need to defer a trade proposal (after dice flash finishes)
-    let deferredTradeData: { fromPlayer: number; offering: Partial<Record<Resource, number>>; requesting: Partial<Record<Resource, number>>; pendingState: GameState } | null = null;
-
-    setGame(prev => {
-      if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) {
-        aiTurnInProgressRef.current = false;
-        return prev;
+    // Deep clone so we can freely mutate (distributeResources/discardHalf mutate in-place)
+    const afterRoll: GameState = JSON.parse(JSON.stringify({ ...prev, dice }));
+    if (sum !== 7) {
+      distributeResources(afterRoll, sum);
+    } else {
+      // Auto-discard AI players only; human will choose via UI
+      for (const p of afterRoll.players) {
+        if (!p.isHuman && getTotalResources(p) >= 8) discardHalf(afterRoll, p.id);
       }
-
-      // Deep clone to avoid mutating React state (distributeResources/discardHalf mutate in-place)
-      const afterRoll: GameState = JSON.parse(JSON.stringify({ ...prev, dice }));
-      if (sum !== 7) {
-        distributeResources(afterRoll, sum);
-      } else {
-        // Auto-discard AI players only; human will choose via UI
-        for (const p of afterRoll.players) {
-          if (!p.isHuman && getTotalResources(p) >= 8) discardHalf(afterRoll, p.id);
-        }
-        // Track which human players need to discard (synced via Firestore to all clients)
-        const humansToDiscard = afterRoll.players
-          .filter(p => p.isHuman && getTotalResources(p) >= 8)
-          .map(p => p.id);
-        if (humansToDiscard.length > 0) {
-          afterRoll.playersToDiscard = humansToDiscard;
-        }
+      const humansToDiscard = afterRoll.players
+        .filter(p => p.isHuman && getTotalResources(p) >= 8)
+        .map(p => p.id);
+      if (humansToDiscard.length > 0) {
+        afterRoll.playersToDiscard = humansToDiscard;
       }
-      addLog(afterRoll, `${prev.players[aiPlayerId].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
-
-      // If any human needs to discard, pause here — each client shows discard UI
-      if (afterRoll.playersToDiscard.length > 0) {
-        aiTurnInProgressRef.current = false;
-        return afterRoll;
-      }
-
-      // ~45% chance the AI proposes a trade with a human player before acting
-      const humanPlayers = afterRoll.players.filter(p => p.isHuman);
-      if (humanPlayers.length > 0 && Math.random() < 0.45) {
-        const aiPlayer = afterRoll.players[aiPlayerId];
-        const TRADEABLE = (['wood', 'brick', 'sheep', 'wheat', 'ore'] as Resource[]);
-        const excess = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) >= 2);
-        const needs = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) <= 1);
-        if (excess.length > 0 && needs.length > 0) {
-          const offer = excess.sort((a, b) => (aiPlayer.resources[b] || 0) - (aiPlayer.resources[a] || 0))[0];
-          const request = needs.sort((a, b) => (aiPlayer.resources[a] || 0) - (aiPlayer.resources[b] || 0))[0];
-          // Defer the trade proposal so it appears AFTER the dice flash clears.
-          // Set pendingTradeRef synchronously so the useEffect won't schedule over it.
-          deferredTradeData = { fromPlayer: aiPlayerId, offering: { [offer]: 1 }, requesting: { [request]: 1 }, pendingState: afterRoll };
-          pendingTradeRef.current = true;
-          // aiTurnInProgressRef stays true — cleared when human responds to trade
-          return afterRoll;
-        }
-      }
-
-      const result = aiDoFullTurn(afterRoll);
-      // Turn is complete — allow next AI turn to be scheduled by useEffect
-      aiTurnInProgressRef.current = false;
-      return result;
-    });
-
-    // Show trade proposal after dice flash animation finishes
-    if (deferredTradeData) {
-      const tradeData = deferredTradeData;
-      setTimeout(() => {
-        pendingTradeRef.current = false;
-        setAiTradeProposal(tradeData);
-      }, 1400);
     }
+    addLog(afterRoll, `${prev.players[aiPlayerId].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
+
+    // If any human needs to discard, pause here — each client shows discard UI
+    if (afterRoll.playersToDiscard.length > 0) {
+      aiTurnInProgressRef.current = false;
+      setGame(afterRoll);
+      return;
+    }
+
+    // ~45% chance the AI proposes a trade with a human player before acting
+    const humanPlayers = afterRoll.players.filter(p => p.isHuman);
+    if (humanPlayers.length > 0 && Math.random() < 0.45) {
+      const aiPlayer = afterRoll.players[aiPlayerId];
+      const TRADEABLE = (['wood', 'brick', 'sheep', 'wheat', 'ore'] as Resource[]);
+      const excess = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) >= 2);
+      const needs = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) <= 1);
+      if (excess.length > 0 && needs.length > 0) {
+        const offer = excess.sort((a, b) => (aiPlayer.resources[b] || 0) - (aiPlayer.resources[a] || 0))[0];
+        const request = needs.sort((a, b) => (aiPlayer.resources[a] || 0) - (aiPlayer.resources[b] || 0))[0];
+        const tradeData = {
+          fromPlayer: aiPlayerId,
+          offering: { [offer]: 1 } as Partial<Record<Resource, number>>,
+          requesting: { [request]: 1 } as Partial<Record<Resource, number>>,
+          pendingState: afterRoll,
+        };
+        // Set state immediately; aiTurnInProgressRef stays true until human responds
+        pendingTradeRef.current = true;
+        setGame(afterRoll);
+        // Show trade proposal after dice flash animation finishes
+        setTimeout(() => {
+          pendingTradeRef.current = false;
+          setAiTradeProposal(tradeData);
+        }, 1400);
+        return;
+      }
+    }
+
+    // No trade — run full AI turn and advance to next player
+    const result = aiDoFullTurn(afterRoll);
+    aiTurnInProgressRef.current = false;
+    setGame(result);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game, showDiceFlash, showResourceGains]);
+  }, [showDiceFlash, showResourceGains]);
 
   useEffect(() => {
     // In multiplayer: only host handles AI turns
