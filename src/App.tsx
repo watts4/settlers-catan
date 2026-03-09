@@ -271,6 +271,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   // Resource fly animation
   const [flyingResources, setFlyingResources] = useState<ResourceGain[]>([]);
   const playerCardRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null]);
+  // Refs to track animation timeouts so they can be cancelled on overlapping AI turns
+  const flashDiceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flyingResStartRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flyingResClearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // AI-initiated trade proposal — shown to human during AI's turn
   const [aiTradeProposal, setAiTradeProposal] = useState<{
     fromPlayer: number;
@@ -422,10 +426,23 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     if (game.phase !== 'playing' || game.players[aiPlayerId]?.isHuman || !shouldHandleAI) return;
     if (aiTradeProposal) return; // already waiting for human response
 
+    // Use a longer delay to ensure previous AI turn's animations have finished.
+    // Dice flash = 1200ms, resource fly = 600ms start + 1200ms duration = 1800ms total.
+    // 2000ms gives enough buffer so animations from the previous AI turn don't overlap.
+    const AI_TURN_DELAY = 2000;
+
     const timer = setTimeout(() => {
       // Roll dice outside setGame to avoid StrictMode double-roll
       const dice = rollDice();
       const sum = dice[0] + dice[1];
+
+      // Cancel any in-flight animation timeouts from a previous AI turn
+      // before starting new animations
+      if (flashDiceTimeoutRef.current) { clearTimeout(flashDiceTimeoutRef.current); flashDiceTimeoutRef.current = null; }
+      if (flyingResStartRef.current) { clearTimeout(flyingResStartRef.current); flyingResStartRef.current = null; }
+      if (flyingResClearRef.current) { clearTimeout(flyingResClearRef.current); flyingResClearRef.current = null; }
+      setFlashDice(null);
+      setFlyingResources([]);
 
       // Compute resource gains for fly animation before state mutation
       const gains = sum !== 7 ? computeResourceGains(game, sum) : [];
@@ -485,11 +502,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         const tradeData = deferredTradeData;
         setTimeout(() => setAiTradeProposal(tradeData), 1400);
       }
-    }, 900);
+    }, AI_TURN_DELAY);
 
     return () => clearTimeout(timer);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [game.currentPlayer, game.phase, aiTradeProposal]);
+  }, [game.currentPlayer, game.phase, game.turn, aiTradeProposal]);
 
   // Auto-open player trade modal when an AI trade proposal arrives
   useEffect(() => {
@@ -693,16 +710,30 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   }, [isRolling]);
 
   const showDiceFlash = useCallback((dice: [number, number]) => {
+    // Cancel any previous dice flash clear timeout to prevent it from
+    // clearing THIS flash when AI turns overlap
+    if (flashDiceTimeoutRef.current) clearTimeout(flashDiceTimeoutRef.current);
     setFlashDice(dice);
-    setTimeout(() => setFlashDice(null), 1200);
+    flashDiceTimeoutRef.current = setTimeout(() => {
+      setFlashDice(null);
+      flashDiceTimeoutRef.current = null;
+    }, 1200);
   }, []);
 
   const showResourceGains = useCallback((gains: ResourceGain[]) => {
     if (gains.length === 0) return;
+    // Cancel any previous resource animation timeouts to prevent them from
+    // clearing THIS animation when AI turns overlap
+    if (flyingResStartRef.current) clearTimeout(flyingResStartRef.current);
+    if (flyingResClearRef.current) clearTimeout(flyingResClearRef.current);
     // Stagger each gain slightly so they don't all fly at once
-    setTimeout(() => {
+    flyingResStartRef.current = setTimeout(() => {
       setFlyingResources(gains);
-      setTimeout(() => setFlyingResources([]), 1200);
+      flyingResStartRef.current = null;
+      flyingResClearRef.current = setTimeout(() => {
+        setFlyingResources([]);
+        flyingResClearRef.current = null;
+      }, 1200);
     }, 600); // start after dice flash is mostly visible
   }, []);
 
