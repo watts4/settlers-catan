@@ -61,7 +61,7 @@ export default function LandingPage({
 }: LandingPageProps) {
   const isMobile = useIsMobile();
   const [user, setUser] = useState<User | null>(null);
-  const [playerName, setPlayerName] = useState<string>('You');
+  const [playerName, setPlayerName] = useState<string>('Player 1');
   const [joinCode, setJoinCode] = useState<string>('');
   const [showJoin, setShowJoin] = useState<boolean>(false);
   const [isCreating, setIsCreating] = useState<boolean>(false);
@@ -71,9 +71,6 @@ export default function LandingPage({
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      if (u?.displayName) {
-        setPlayerName(u.displayName);
-      }
     });
     return unsub;
   }, []);
@@ -90,10 +87,7 @@ export default function LandingPage({
   async function handleSignIn() {
     try {
       const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      if (result.user.displayName) {
-        setPlayerName(result.user.displayName);
-      }
+      await signInWithPopup(auth, provider);
     } catch (err) {
       console.error('Sign-in failed:', err);
     }
@@ -102,7 +96,7 @@ export default function LandingPage({
   async function handleSignOut() {
     try {
       await signOut(auth);
-      setPlayerName('You');
+      setPlayerName('Player 1');
     } catch (err) {
       console.error('Sign-out failed:', err);
     }
@@ -125,7 +119,7 @@ export default function LandingPage({
       return;
     }
     setJoinError('');
-    onJoinMultiplayer(code, playerName.trim() || 'You');
+    onJoinMultiplayer(code, playerName.trim() || 'Player 1');
   }
 
   return (
@@ -257,39 +251,6 @@ export default function LandingPage({
           </button>
         </div>
       )}
-
-      {/* Name input */}
-      <div
-        style={{
-          width: '100%',
-          maxWidth: isMobile ? 'none' : '680px',
-          marginBottom: isMobile ? '14px' : '28px',
-        }}
-      >
-        <label
-          style={{ display: 'block', color: COLORS.muted, fontSize: '13px', marginBottom: '6px' }}
-        >
-          Your Name
-        </label>
-        <input
-          type="text"
-          value={playerName}
-          onChange={(e) => setPlayerName(e.target.value)}
-          maxLength={24}
-          placeholder="Enter your name"
-          style={{
-            width: '100%',
-            background: COLORS.cardBg,
-            border: `1px solid ${COLORS.cardBorder}`,
-            borderRadius: '8px',
-            color: COLORS.white,
-            padding: '10px 14px',
-            fontSize: '15px',
-            outline: 'none',
-            boxSizing: 'border-box',
-          }}
-        />
-      </div>
 
       {/* Action cards */}
       <div
