@@ -8,7 +8,7 @@ import {
 import type { User } from 'firebase/auth';
 import { auth } from './firebase';
 
-function useIsMobile(breakpoint = 600) {
+function useIsMobile(breakpoint = 768) {
   const query = `(max-width: ${breakpoint}px)`;
   const [mobile, setMobile] = useState(() =>
     typeof window !== 'undefined' ? window.matchMedia(query).matches : false
