@@ -8,6 +8,20 @@ import {
 import type { User } from 'firebase/auth';
 import { auth } from './firebase';
 
+function useIsMobile(breakpoint = 600) {
+  const query = `(max-width: ${breakpoint}px)`;
+  const [mobile, setMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia(query).matches : false
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const handler = (e: MediaQueryListEvent) => setMobile(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, [query]);
+  return mobile;
+}
+
 interface LandingPageProps {
   onPlaySolo: () => void;
   onResumeSolo: () => void;
@@ -45,6 +59,7 @@ export default function LandingPage({
   onRejoinGame,
   initialRoomCode,
 }: LandingPageProps) {
+  const isMobile = useIsMobile();
   const [user, setUser] = useState<User | null>(null);
   const [playerName, setPlayerName] = useState<string>('You');
   const [joinCode, setJoinCode] = useState<string>('');
@@ -123,7 +138,7 @@ export default function LandingPage({
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: '24px 16px',
+        padding: isMobile ? '12px 10px' : '24px 16px',
         boxSizing: 'border-box',
       }}
     >
@@ -134,7 +149,7 @@ export default function LandingPage({
           maxWidth: '680px',
           display: 'flex',
           justifyContent: 'flex-end',
-          marginBottom: '16px',
+          marginBottom: isMobile ? '8px' : '16px',
         }}
       >
         {user ? (
@@ -185,21 +200,21 @@ export default function LandingPage({
       </div>
 
       {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-        <div style={{ fontSize: '56px', marginBottom: '8px' }}>🎲</div>
+      <div style={{ textAlign: 'center', marginBottom: isMobile ? '16px' : '40px' }}>
+        <div style={{ fontSize: isMobile ? '32px' : '56px', marginBottom: '4px' }}>🎲</div>
         <h1
           style={{
-            fontSize: 'clamp(28px, 6vw, 48px)',
+            fontSize: isMobile ? '24px' : 'clamp(28px, 6vw, 48px)',
             fontWeight: 800,
             color: COLORS.gold,
-            margin: '0 0 8px',
+            margin: '0 0 4px',
             letterSpacing: '-1px',
             textShadow: `0 0 30px ${COLORS.goldDim}88`,
           }}
         >
           Settlers of Catan
         </h1>
-        <p style={{ color: COLORS.muted, margin: 0, fontSize: '16px' }}>
+        <p style={{ color: COLORS.muted, margin: 0, fontSize: isMobile ? '13px' : '16px' }}>
           Build, trade, and conquer the island
         </p>
       </div>
@@ -248,7 +263,7 @@ export default function LandingPage({
         style={{
           width: '100%',
           maxWidth: '680px',
-          marginBottom: '28px',
+          marginBottom: isMobile ? '14px' : '28px',
         }}
       >
         <label
@@ -282,8 +297,8 @@ export default function LandingPage({
           width: '100%',
           maxWidth: '680px',
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '16px',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: isMobile ? '10px' : '16px',
         }}
       >
         {/* Solo card */}
@@ -294,14 +309,14 @@ export default function LandingPage({
               flex: 1,
               background: `linear-gradient(135deg, #1a2a3a, #0f1f30)`,
               border: `2px solid ${COLORS.gold}55`,
-              borderRadius: '16px',
-              padding: '28px 20px',
+              borderRadius: isMobile ? '12px' : '16px',
+              padding: isMobile ? '14px 16px' : '28px 20px',
               cursor: 'pointer',
               color: COLORS.white,
-              textAlign: 'center',
+              textAlign: isMobile ? 'left' : 'center',
               transition: 'all 0.2s',
               display: 'flex',
-              flexDirection: 'column',
+              flexDirection: isMobile ? 'row' : 'column',
               alignItems: 'center',
               gap: '10px',
             }}
@@ -314,13 +329,17 @@ export default function LandingPage({
               (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
             }}
           >
-            <span style={{ fontSize: '36px' }}>🤖</span>
-            <span style={{ fontSize: '18px', fontWeight: 700, color: COLORS.gold }}>
-              {hasSoloSave ? 'New Solo Game' : 'Play Solo'}
-            </span>
-            <span style={{ fontSize: '13px', color: COLORS.muted }}>
-              {hasSoloSave ? 'Start fresh against AI' : 'Play against AI opponents on this device'}
-            </span>
+            <span style={{ fontSize: isMobile ? '24px' : '36px' }}>🤖</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              <span style={{ fontSize: isMobile ? '15px' : '18px', fontWeight: 700, color: COLORS.gold }}>
+                {hasSoloSave ? 'New Solo Game' : 'Play Solo'}
+              </span>
+              {!isMobile && (
+                <span style={{ fontSize: '13px', color: COLORS.muted }}>
+                  {hasSoloSave ? 'Start fresh against AI' : 'Play against AI opponents on this device'}
+                </span>
+              )}
+            </div>
           </button>
           {hasSoloSave && (
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -367,14 +386,14 @@ export default function LandingPage({
           style={{
             background: `linear-gradient(135deg, #1e2a1a, #0f1f0a)`,
             border: `2px solid ${COLORS.green}55`,
-            borderRadius: '16px',
-            padding: '28px 20px',
+            borderRadius: isMobile ? '12px' : '16px',
+            padding: isMobile ? '14px 16px' : '28px 20px',
             cursor: isCreating ? 'wait' : 'pointer',
             color: COLORS.white,
-            textAlign: 'center',
+            textAlign: isMobile ? 'left' : 'center',
             transition: 'all 0.2s',
             display: 'flex',
-            flexDirection: 'column',
+            flexDirection: isMobile ? 'row' : 'column',
             alignItems: 'center',
             gap: '10px',
             opacity: isCreating ? 0.7 : 1,
@@ -390,13 +409,17 @@ export default function LandingPage({
             (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
           }}
         >
-          <span style={{ fontSize: '36px' }}>🏠</span>
-          <span style={{ fontSize: '18px', fontWeight: 700, color: COLORS.green }}>
-            {isCreating ? 'Creating...' : 'Create Game'}
-          </span>
-          <span style={{ fontSize: '13px', color: COLORS.muted }}>
-            Host a multiplayer room and invite friends
-          </span>
+          <span style={{ fontSize: isMobile ? '24px' : '36px' }}>🏠</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <span style={{ fontSize: isMobile ? '15px' : '18px', fontWeight: 700, color: COLORS.green }}>
+              {isCreating ? 'Creating...' : 'Create Game'}
+            </span>
+            {!isMobile && (
+              <span style={{ fontSize: '13px', color: COLORS.muted }}>
+                Host a multiplayer room and invite friends
+              </span>
+            )}
+          </div>
         </button>
 
         {/* Join card */}
@@ -404,99 +427,108 @@ export default function LandingPage({
           style={{
             background: `linear-gradient(135deg, #1a1a2a, #0f0f1f)`,
             border: `2px solid ${COLORS.blue}${showJoin ? 'ff' : '55'}`,
-            borderRadius: '16px',
-            padding: '28px 20px',
+            borderRadius: isMobile ? '12px' : '16px',
+            padding: isMobile ? '14px 16px' : '28px 20px',
             cursor: 'default',
             color: COLORS.white,
-            textAlign: 'center',
+            textAlign: isMobile ? 'left' : 'center',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '10px',
+            gap: isMobile ? '8px' : '10px',
             transition: 'border-color 0.2s',
           }}
         >
-          <span style={{ fontSize: '36px' }}>🚪</span>
-          <span style={{ fontSize: '18px', fontWeight: 700, color: COLORS.blue }}>
-            Join Game
-          </span>
-          <span style={{ fontSize: '13px', color: COLORS.muted }}>
-            Enter a room code to join a friend's game
-          </span>
-
           {!showJoin ? (
-            <button
-              onClick={() => setShowJoin(true)}
-              style={{
-                background: COLORS.blue,
-                color: '#fff',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '8px 20px',
-                fontWeight: 700,
-                cursor: 'pointer',
-                fontSize: '14px',
-                marginTop: '4px',
-              }}
-            >
-              Enter Code
-            </button>
-          ) : (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-                width: '100%',
-                alignItems: 'center',
-              }}
-            >
-              <input
-                type="text"
-                value={joinCode}
-                onChange={(e) => {
-                  setJoinCode(e.target.value.toUpperCase().slice(0, 6));
-                  setJoinError('');
-                }}
-                placeholder="ROOM CODE"
-                maxLength={6}
-                style={{
-                  width: '100%',
-                  background: '#0d1117',
-                  border: `1px solid ${joinError ? COLORS.red : COLORS.cardBorder}`,
-                  borderRadius: '8px',
-                  color: COLORS.gold,
-                  padding: '10px 12px',
-                  fontSize: '18px',
-                  letterSpacing: '4px',
-                  textAlign: 'center',
-                  outline: 'none',
-                  fontWeight: 700,
-                  boxSizing: 'border-box',
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-              />
-              {joinError && (
-                <span style={{ color: COLORS.red, fontSize: '12px' }}>{joinError}</span>
-              )}
+            <div style={{ display: 'flex', flexDirection: isMobile ? 'row' : 'column', alignItems: 'center', gap: '10px', width: '100%' }}>
+              <span style={{ fontSize: isMobile ? '24px' : '36px' }}>🚪</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
+                <span style={{ fontSize: isMobile ? '15px' : '18px', fontWeight: 700, color: COLORS.blue }}>
+                  Join Game
+                </span>
+                {!isMobile && (
+                  <span style={{ fontSize: '13px', color: COLORS.muted }}>
+                    Enter a room code to join a friend's game
+                  </span>
+                )}
+              </div>
               <button
-                onClick={handleJoin}
-                disabled={joinCode.length !== 6}
+                onClick={() => setShowJoin(true)}
                 style={{
-                  background: joinCode.length === 6 ? COLORS.blue : COLORS.cardBorder,
+                  background: COLORS.blue,
                   color: '#fff',
                   border: 'none',
                   borderRadius: '8px',
-                  padding: '8px 24px',
+                  padding: '8px 20px',
                   fontWeight: 700,
-                  cursor: joinCode.length === 6 ? 'pointer' : 'not-allowed',
+                  cursor: 'pointer',
                   fontSize: '14px',
-                  width: '100%',
                 }}
               >
-                Join
+                Enter Code
               </button>
             </div>
+          ) : (
+            <>
+              <span style={{ fontSize: isMobile ? '15px' : '18px', fontWeight: 700, color: COLORS.blue }}>
+                Join Game
+              </span>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                  width: '100%',
+                  alignItems: 'center',
+                }}
+              >
+                <input
+                  type="text"
+                  value={joinCode}
+                  onChange={(e) => {
+                    setJoinCode(e.target.value.toUpperCase().slice(0, 6));
+                    setJoinError('');
+                  }}
+                  placeholder="ROOM CODE"
+                  maxLength={6}
+                  style={{
+                    width: '100%',
+                    background: '#0d1117',
+                    border: `1px solid ${joinError ? COLORS.red : COLORS.cardBorder}`,
+                    borderRadius: '8px',
+                    color: COLORS.gold,
+                    padding: '10px 12px',
+                    fontSize: isMobile ? '16px' : '18px',
+                    letterSpacing: '4px',
+                    textAlign: 'center',
+                    outline: 'none',
+                    fontWeight: 700,
+                    boxSizing: 'border-box',
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+                />
+                {joinError && (
+                  <span style={{ color: COLORS.red, fontSize: '12px' }}>{joinError}</span>
+                )}
+                <button
+                  onClick={handleJoin}
+                  disabled={joinCode.length !== 6}
+                  style={{
+                    background: joinCode.length === 6 ? COLORS.blue : COLORS.cardBorder,
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    padding: '8px 24px',
+                    fontWeight: 700,
+                    cursor: joinCode.length === 6 ? 'pointer' : 'not-allowed',
+                    fontSize: '14px',
+                    width: '100%',
+                  }}
+                >
+                  Join
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -506,7 +538,7 @@ export default function LandingPage({
         style={{
           color: COLORS.muted,
           fontSize: '12px',
-          marginTop: '48px',
+          marginTop: isMobile ? '16px' : '48px',
           textAlign: 'center',
         }}
       >
