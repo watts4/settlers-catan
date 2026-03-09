@@ -207,6 +207,42 @@ const PORT_ICON: Record<string, string> = {
   wood: '🌲', brick: '🧱', sheep: '🐑', wheat: '🌾', ore: '⛰️', generic: '⚓',
 };
 
+// ── Resource gain computation (mirrors distributeResources but returns gains) ─
+
+interface ResourceGain {
+  playerId: number;
+  resource: Resource;
+  amount: number;
+  id: number; // unique key for React
+}
+
+let gainIdCounter = 0;
+
+function computeResourceGains(state: GameState, diceSum: number): ResourceGain[] {
+  if (diceSum === 7) return [];
+  const gains: ResourceGain[] = [];
+  state.board.hexes.forEach(hex => {
+    if (hex.number === diceSum && !hex.hasRobber) {
+      const { cx, cy } = hexCenterPx(hex.q, hex.r);
+      const hexVertices = state.board.vertices.filter(v => {
+        const dx = v.x - cx, dy = v.y - cy;
+        return Math.sqrt(dx * dx + dy * dy) <= HEX_SIZE + 2;
+      });
+      hexVertices.forEach(vertex => {
+        Object.entries(vertex.settlements).forEach(([playerId, type]) => {
+          if (type && hex.resource !== 'desert' && hex.resource !== 'gold') {
+            const amount = type === 'settlement' ? 1 : 2;
+            for (let i = 0; i < amount; i++) {
+              gains.push({ playerId: parseInt(playerId), resource: hex.resource as Resource, amount: 1, id: ++gainIdCounter });
+            }
+          }
+        });
+      });
+    }
+  });
+  return gains;
+}
+
 // ── App ───────────────────────────────────────────────────────────────────────
 
 function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
@@ -232,6 +268,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [isRolling, setIsRolling] = useState(false);
   const [animDice, setAnimDice] = useState<[number, number]>([1, 1]);
   const [flashDice, setFlashDice] = useState<[number, number] | null>(null);
+  // Resource fly animation
+  const [flyingResources, setFlyingResources] = useState<ResourceGain[]>([]);
+  const playerCardRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null]);
   // AI-initiated trade proposal — shown to human during AI's turn
   const [aiTradeProposal, setAiTradeProposal] = useState<{
     fromPlayer: number;
@@ -388,6 +427,14 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       const dice = rollDice();
       const sum = dice[0] + dice[1];
 
+      // Compute resource gains for fly animation before state mutation
+      const gains = sum !== 7 ? computeResourceGains(game, sum) : [];
+      showDiceFlash(dice);
+      if (gains.length > 0) showResourceGains(gains);
+
+      // Track whether we need to defer a trade proposal (after dice flash finishes)
+      let deferredTradeData: { fromPlayer: number; offering: Partial<Record<Resource, number>>; requesting: Partial<Record<Resource, number>>; pendingState: GameState } | null = null;
+
       setGame(prev => {
         if (prev.currentPlayer !== aiPlayerId || prev.players[aiPlayerId].isHuman) return prev;
 
@@ -408,7 +455,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           }
         }
         addLog(afterRoll, `${prev.players[aiPlayerId].name} rolled ${dice[0]}+${dice[1]}=${sum}`);
-        showDiceFlash(dice);
 
         // If any human needs to discard, pause here — each client shows discard UI
         if (afterRoll.playersToDiscard.length > 0) {
@@ -420,21 +466,25 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         if (humanPlayers.length > 0 && Math.random() < 0.45) {
           const aiPlayer = afterRoll.players[aiPlayerId];
           const TRADEABLE = (['wood', 'brick', 'sheep', 'wheat', 'ore'] as Resource[]);
-          // Find resources the AI has excess of (>= 2) and one it needs (0 or 1)
           const excess = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) >= 2);
           const needs = TRADEABLE.filter(r => (aiPlayer.resources[r] || 0) <= 1);
           if (excess.length > 0 && needs.length > 0) {
-            // Pick most excessive to offer, most needed to request
             const offer = excess.sort((a, b) => (aiPlayer.resources[b] || 0) - (aiPlayer.resources[a] || 0))[0];
             const request = needs.sort((a, b) => (aiPlayer.resources[a] || 0) - (aiPlayer.resources[b] || 0))[0];
-            // Propose: AI offers 1, requests 1 (players can negotiate in real Catan but we keep it 1:1)
-            setAiTradeProposal({ fromPlayer: aiPlayerId, offering: { [offer]: 1 }, requesting: { [request]: 1 }, pendingState: afterRoll });
-            return afterRoll; // Pause — don't complete turn yet, wait for human response
+            // Defer the trade proposal so it appears AFTER the dice flash clears
+            deferredTradeData = { fromPlayer: aiPlayerId, offering: { [offer]: 1 }, requesting: { [request]: 1 }, pendingState: afterRoll };
+            return afterRoll;
           }
         }
 
         return aiDoFullTurn(afterRoll);
       });
+
+      // Show trade proposal after dice flash animation finishes
+      if (deferredTradeData) {
+        const tradeData = deferredTradeData;
+        setTimeout(() => setAiTradeProposal(tradeData), 1400);
+      }
     }, 900);
 
     return () => clearTimeout(timer);
@@ -647,6 +697,15 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setTimeout(() => setFlashDice(null), 1200);
   }, []);
 
+  const showResourceGains = useCallback((gains: ResourceGain[]) => {
+    if (gains.length === 0) return;
+    // Stagger each gain slightly so they don't all fly at once
+    setTimeout(() => {
+      setFlyingResources(gains);
+      setTimeout(() => setFlyingResources([]), 1200);
+    }, 600); // start after dice flash is mostly visible
+  }, []);
+
   const handleRollDice = () => {
     if (isRolling) return;
     const dice = rollDice();
@@ -662,9 +721,13 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     const humanNeedsDiscard = sum === 7 && !!myPlayer && getTotalResources(myPlayer) >= 8;
     const humanDiscardCount = humanNeedsDiscard ? Math.floor(getTotalResources(myPlayer!) / 2) : 0;
 
+    // Pre-compute resource gains for animation (before state mutation)
+    const gains = sum !== 7 ? computeResourceGains(game, sum) : [];
+
     setTimeout(() => {
       setIsRolling(false);
       showDiceFlash(dice);
+      if (gains.length > 0) showResourceGains(gains);
       setGame(prev => {
         const newGame = { ...prev, dice };
         if (sum !== 7) {
@@ -1483,7 +1546,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       {/* Player Stats */}
       <div className="player-bar">
         {game.players.map(player => (
-          <div key={player.id} className={`player-card ${player.id === game.currentPlayer ? 'active' : ''}`}
+          <div key={player.id}
+            ref={el => { playerCardRefs.current[player.id] = el; }}
+            className={`player-card ${player.id === game.currentPlayer ? 'active' : ''}`}
             style={{ '--player-color': player.color } as React.CSSProperties}>
             <div className="player-name" style={{ color: player.color }}>{player.name}</div>
             <div className="player-vp">
@@ -2302,7 +2367,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
 
               <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isMyTurn || mustMoveRobber || mustDiscard} style={{ marginTop: '10px' }}>
-                ⏭️ End Turn
+                End Turn
               </button>
             </>
           )}
@@ -2338,6 +2403,34 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           </div>
         </div>
       )}
+
+      {/* Flying resource gain animations */}
+      {flyingResources.length > 0 && flyingResources.map((gain, idx) => {
+        const targetCard = playerCardRefs.current[gain.playerId];
+        if (!targetCard) return null;
+        const rect = targetCard.getBoundingClientRect();
+        const targetX = rect.left + rect.width / 2;
+        const targetY = rect.top + rect.height / 2;
+        const startX = window.innerWidth / 2;
+        const startY = window.innerHeight / 2;
+        const icon = HEX_ICON[gain.resource] || '?';
+        const delay = idx * 120; // stagger each one
+        return (
+          <div key={gain.id}
+            className="resource-fly"
+            style={{
+              '--fly-start-x': `${startX}px`,
+              '--fly-start-y': `${startY}px`,
+              '--fly-end-x': `${targetX}px`,
+              '--fly-end-y': `${targetY}px`,
+              animationDelay: `${delay}ms`,
+              color: game.players[gain.playerId]?.color,
+            } as React.CSSProperties}
+          >
+            {icon}
+          </div>
+        );
+      })}
 
       {/* Game Over overlay */}
       {game.winner !== null && (

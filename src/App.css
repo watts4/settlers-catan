@@ -528,6 +528,46 @@ body {
   100% { background: rgba(0,0,0,0); }
 }
 
+/* Flying resource gain animation */
+.resource-fly {
+  position: fixed;
+  left: var(--fly-start-x);
+  top: var(--fly-start-y);
+  font-size: 1.6rem;
+  z-index: 950;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.5);
+  animation: resource-fly-move 0.9s ease-in-out forwards;
+  filter: drop-shadow(0 0 6px rgba(255,215,0,0.6));
+  text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+
+@keyframes resource-fly-move {
+  0% {
+    left: var(--fly-start-x);
+    top: var(--fly-start-y);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.3);
+  }
+  40% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    left: var(--fly-end-x);
+    top: var(--fly-end-y);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .game {
