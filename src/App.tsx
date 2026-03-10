@@ -1185,7 +1185,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
   const handleAcceptAiTrade = () => {
     if (!aiTradeProposal) return;
-    const { fromPlayer, offering, requesting, pendingState } = aiTradeProposal;
+    const { fromPlayer, offering, requesting } = aiTradeProposal;
     setAiTradeProposal(null);
     setCounterMode(false);
     setCounterResult(null);
