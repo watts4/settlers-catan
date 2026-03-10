@@ -128,7 +128,10 @@ function Root() {
   const handleStartGame = async () => {
     if (!multiplayerConfig || !roomData) return;
     const playerConfigs: PlayerConfig[] = [0, 1, 2, 3].map(slot => {
-      const p = roomData.players.find(pl => pl.slot === slot);
+      const playersInSlot = roomData.players.filter(pl => pl.slot === slot);
+      // Prefer human players over AI entries — handles the case where a slot was
+      // pre-marked as AI and then a human joined it (two entries for the same slot)
+      const p = playersInSlot.find(pl => pl.isHuman) ?? playersInSlot[0];
       return {
         name: p?.name ?? `Player ${slot + 1}`,
         isHuman: p?.isHuman ?? false,
