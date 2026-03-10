@@ -61,19 +61,19 @@ const PORTS: { q: number; r: number; edge: number; resource: Resource | 'generic
   { q: -2, r:  0, edge: 4, resource: 'wood'    }, // upper-left
 ];
 
-// Get pixel center of a hex (pointy-top orientation — wider than tall)
+// Get pixel center of a hex
 export function hexCenterPx(q: number, r: number): { cx: number; cy: number } {
   return {
-    cx: HEX_SIZE * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r),
-    cy: HEX_SIZE * 1.5 * r,
+    cx: HEX_SIZE * 1.5 * q,
+    cy: HEX_SIZE * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r),
   };
 }
 
 // Get pixel position of a vertex (corner loc 0-5) on a hex
-// Pointy-top hexes: loc 0 = upper-right, going clockwise
+// Flat-top hexes: loc 0 = right, going clockwise
 function vertexPx(q: number, r: number, loc: number): { x: number; y: number } {
   const { cx, cy } = hexCenterPx(q, r);
-  const angle = Math.PI / 6 + (loc * Math.PI) / 3;
+  const angle = (loc * Math.PI) / 3;
   return {
     x: cx + HEX_SIZE * Math.cos(angle),
     y: cy + HEX_SIZE * Math.sin(angle),
