@@ -70,8 +70,8 @@ function edgesShareEndpoint(e1: Edge, e2: Edge): boolean {
 function portPixels(port: Port) {
   const { q, r, edge } = port.location;
   const { cx, cy } = hexCenterPx(q, r);
-  const a1 = (edge * Math.PI) / 3;
-  const a2 = ((edge + 1) % 6 * Math.PI) / 3;
+  const a1 = Math.PI / 6 + (edge * Math.PI) / 3;
+  const a2 = Math.PI / 6 + ((edge + 1) % 6 * Math.PI) / 3;
   const x1 = cx + HEX_SIZE * Math.cos(a1);
   const y1 = cy + HEX_SIZE * Math.sin(a1);
   const x2 = cx + HEX_SIZE * Math.cos(a2);
@@ -1547,11 +1547,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   );
 
   const renderHex = (hex: Hex) => {
-    const cx = HEX_SIZE * 1.5 * hex.q;
-    const cy = HEX_SIZE * (Math.sqrt(3) / 2 * hex.q + Math.sqrt(3) * hex.r);
+    const { cx, cy } = hexCenterPx(hex.q, hex.r);
     const pts: string[] = [];
     for (let i = 0; i < 6; i++) {
-      const a = (i * Math.PI) / 3;
+      const a = Math.PI / 6 + (i * Math.PI) / 3;
       pts.push(`${cx + HEX_SIZE * Math.cos(a)},${cy + HEX_SIZE * Math.sin(a)}`);
     }
 
@@ -1775,7 +1774,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         const pts: string[] = [];
         const { cx, cy } = hexCenterPx(hex.q, hex.r);
         for (let i = 0; i < 6; i++) {
-          const a = (i * Math.PI) / 3;
+          const a = Math.PI / 6 + (i * Math.PI) / 3;
           pts.push(`${cx + HEX_SIZE * Math.cos(a)},${cy + HEX_SIZE * Math.sin(a)}`);
         }
         return (
@@ -1870,8 +1869,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       <div className="game-area">
         <div className="board-container">
           {/* viewBox expanded to show port symbols outside the hex grid */}
-          <svg viewBox="-310 -310 620 620" className="board"
-            width="620" height="620"
+          <svg viewBox="-350 -290 700 580" className="board"
+            width="700" height="580"
             style={{ fontFamily: "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif" }}
             onClick={() => {
               // Cancel building mode on background click, but NOT during road building card —
