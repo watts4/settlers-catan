@@ -1868,6 +1868,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 <span style={{ marginLeft: '4px', fontSize: '0.8em' }} title="Largest Army">⚔️</span>
               )}
             </div>
+            <div className="player-stats">
+              <span title="Knights played">⚔️ {player.knightsPlayed}</span>
+              <span title="Longest road segment">🛤️ {player.longestRoad}</span>
+              <span title="Settlements placed">🏠 {5 - player.pieces.settlements}</span>
+              <span title="Cities built">🏰 {4 - player.pieces.cities}</span>
+            </div>
             <div className="player-resources">
               {(multiplayerConfig ? player.id === multiplayerConfig.mySlot : player.isHuman) ? (
                 RESOURCES.map(res => {
