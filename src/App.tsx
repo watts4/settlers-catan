@@ -1489,6 +1489,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
   const renderBoardDefs = () => (
     <defs>
+      {/* Drop shadow for buildings */}
+      <filter id="building-shadow" x="-30%" y="-30%" width="160%" height="160%">
+        <feDropShadow dx="1.5" dy="2" stdDeviation="1.5" floodColor="#000" floodOpacity="0.5" />
+      </filter>
       {/* Wood: vertical bark/grain lines */}
       <pattern id="pat-wood" x="0" y="0" width="10" height="12" patternUnits="userSpaceOnUse">
         <line x1="0" y1="0" x2="0" y2="12" stroke="rgba(0,0,0,0.2)" strokeWidth="2.5" />
@@ -1652,17 +1656,25 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           // 3 merlons evenly spaced across the wall top
           const mPositions = [wx + 2, wx + 9, wx + 17];
           return (
-            <g key={key}>
+            <g key={key} filter="url(#building-shadow)">
               {/* Main wall */}
               <rect x={wx} y={wy} width={ww} height={wh}
                 fill={p.color} stroke="#000" strokeWidth="1.5" />
-              {/* Bottom edge line for depth */}
-              <rect x={wx} y={wy + wh - 2} width={ww} height={2}
-                fill="rgba(0,0,0,0.25)" />
+              {/* Wall highlight (top) */}
+              <rect x={wx} y={wy} width={ww} height={3}
+                fill="rgba(255,255,255,0.25)" />
+              {/* Wall shadow (bottom) */}
+              <rect x={wx} y={wy + wh - 4} width={ww} height={4}
+                fill="rgba(0,0,0,0.3)" />
               {/* Battlements */}
               {mPositions.map((mx, i) => (
-                <rect key={i} x={mx} y={wy - mh} width={mw} height={mh}
-                  fill={p.color} stroke="#000" strokeWidth="1.5" />
+                <g key={i}>
+                  <rect x={mx} y={wy - mh} width={mw} height={mh}
+                    fill={p.color} stroke="#000" strokeWidth="1.5" />
+                  {/* Merlon highlight */}
+                  <rect x={mx} y={wy - mh} width={mw} height={2}
+                    fill="rgba(255,255,255,0.3)" />
+                </g>
               ))}
               {/* Arrow-slit window */}
               <rect x={cx - 1} y={wy + 3} width={2} height={5}
@@ -1674,18 +1686,33 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         // Settlement: house with pitched roof
         const bx = cx - 8, by = cy - 4; // wall top-left
         const bw = 16, bh = 10;         // wall size
-        const roofPts = `${bx - 3},${by} ${cx},${by - 9} ${bx + bw + 3},${by}`;
+        // Roof left half (lighter) and right half (darker) for 3D effect
+        const roofLeft = `${bx - 3},${by} ${cx},${by - 9} ${cx},${by}`;
+        const roofRight = `${cx},${by - 9} ${bx + bw + 3},${by} ${cx},${by}`;
         return (
-          <g key={key}>
+          <g key={key} filter="url(#building-shadow)">
             {/* Walls */}
             <rect x={bx} y={by} width={bw} height={bh}
               fill={p.color} stroke="#000" strokeWidth="1.5" />
+            {/* Wall highlight (top edge) */}
+            <rect x={bx} y={by} width={bw} height={2}
+              fill="rgba(255,255,255,0.2)" />
+            {/* Wall shadow (bottom edge) */}
+            <rect x={bx} y={by + bh - 3} width={bw} height={3}
+              fill="rgba(0,0,0,0.2)" />
             {/* Door */}
             <rect x={cx - 2} y={by + bh - 5} width={4} height={5}
               fill="rgba(0,0,0,0.35)" />
-            {/* Roof */}
-            <polygon points={roofPts}
+            {/* Roof - left side (lit) */}
+            <polygon points={roofLeft}
               fill={p.color} stroke="#000" strokeWidth="1.5" />
+            <polygon points={roofLeft}
+              fill="rgba(255,255,255,0.18)" stroke="none" />
+            {/* Roof - right side (shadow) */}
+            <polygon points={roofRight}
+              fill={p.color} stroke="#000" strokeWidth="1.5" />
+            <polygon points={roofRight}
+              fill="rgba(0,0,0,0.18)" stroke="none" />
           </g>
         );
       })
