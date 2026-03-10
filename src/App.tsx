@@ -1858,9 +1858,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             <div className="player-name" style={{ color: player.color }}>{player.name}</div>
             <div className="player-vp">
               VP: {getDisplayVP(player)}
-              {player.devCards.length > 0 && (
-                <span style={{ marginLeft: '8px', fontSize: '0.8em', color: '#ccc' }}>🃏×{player.devCards.length}</span>
-              )}
               {game.longestRoadHolder === player.id && (
                 <span style={{ marginLeft: '6px', fontSize: '0.8em' }} title="Longest Road">🛣️</span>
               )}
@@ -1871,7 +1868,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             <div className="player-stats">
               <span title="Knights played">⚔️ {player.knightsPlayed}</span>
               <span title="Longest road segment">🛤️ {player.longestRoad}</span>
-              <span title="Settlements placed">🏠 {5 - player.pieces.settlements}</span>
               <span title="Cities built">🏰 {4 - player.pieces.cities}</span>
             </div>
             <div className="player-resources">
@@ -1884,7 +1880,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 })
               ) : (
                 <span className="resource" style={{ color: '#aaa' }}>
-                  🂠 {getTotalResources(player)} card{getTotalResources(player) !== 1 ? 's' : ''}
+                  {getTotalResources(player)} 🂠
+                </span>
+              )}
+              {player.devCards.length > 0 && (
+                <span className="resource" style={{ color: '#ccc' }}>
+                  {player.devCards.length} 🃏
                 </span>
               )}
             </div>
