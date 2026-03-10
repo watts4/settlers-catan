@@ -5,7 +5,6 @@ import {
   setDoc,
   updateDoc,
   onSnapshot,
-  arrayUnion,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { GameState } from './types';
@@ -192,8 +191,15 @@ export async function joinGameRoom(
     joinedAt: Date.now(),
   };
 
+  // Replace any existing entry at this slot (e.g. an AI placeholder), then append the new player.
+  // Using arrayUnion would create duplicate slot entries if the host pre-marked the slot as AI.
+  const updatedPlayers = [
+    ...data.players.filter((p) => p.slot !== newSlot),
+    newPlayer,
+  ];
+
   await updateDoc(roomRef, {
-    players: arrayUnion(newPlayer),
+    players: updatedPlayers,
     updatedAt: Date.now(),
   });
 
