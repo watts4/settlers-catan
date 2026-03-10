@@ -590,13 +590,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   // Keep ref in sync with aiTradeProposal state (for use in effects)
   useEffect(() => { aiTradeProposalRef.current = aiTradeProposal; }, [aiTradeProposal]);
 
-  // Auto-open player trade modal when an AI trade proposal arrives
-  useEffect(() => {
-    if (aiTradeProposal) {
-      setPlayerTradeModalOpen(true);
-    }
-  }, [aiTradeProposal]);
-
   // Multiplayer: non-host clients detect AI trade proposals from synced game state
   useEffect(() => {
     if (!multiplayerConfig) return;
