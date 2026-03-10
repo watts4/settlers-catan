@@ -1868,7 +1868,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             <div className="player-stats">
               <span title="Knights played">⚔️ {player.knightsPlayed}</span>
               <span title="Longest road segment">🛤️ {player.longestRoad}</span>
-              <span title="Cities built">🏰 {4 - player.pieces.cities}</span>
             </div>
             <div className="player-resources">
               {(multiplayerConfig ? player.id === multiplayerConfig.mySlot : player.isHuman) ? (
