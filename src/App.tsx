@@ -1870,23 +1870,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               <span title="Longest road segment">🛤️ {player.longestRoad}</span>
             </div>
             <div className="player-resources">
-              {(multiplayerConfig ? player.id === multiplayerConfig.mySlot : player.isHuman) ? (
-                RESOURCES.map(res => {
-                  const count = player.resources[res] || 0;
-                  return count > 0 ? (
-                    <span key={res} className="resource">{HEX_ICON[res]} {count}</span>
-                  ) : null;
-                })
-              ) : (
-                <span className="resource" style={{ color: '#aaa' }}>
-                  {getTotalResources(player)} 🂠
-                </span>
-              )}
-              {player.devCards.length > 0 && (
-                <span className="resource" style={{ color: '#ccc' }}>
-                  {player.devCards.length} 🃏
-                </span>
-              )}
+              <span className="resource" style={{ color: '#ccc' }}>
+                {player.devCards.length} 🃏
+              </span>
+              <span className="resource" style={{ color: getTotalResources(player) >= 7 ? '#e74c3c' : '#aaa' }}>
+                {getTotalResources(player)} 🂠
+              </span>
             </div>
           </div>
         ))}
@@ -2748,6 +2737,23 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               )}
 
 
+
+              {/* Resource hand */}
+              {(() => {
+                const humanPlayer = multiplayerConfig
+                  ? game.players[multiplayerConfig.mySlot]
+                  : game.players.find(p => p.isHuman);
+                if (!humanPlayer) return null;
+                return (
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap', marginTop: '10px', padding: '8px', background: 'rgba(0,0,0,0.25)', borderRadius: '8px' }}>
+                    {RESOURCES.map(res => (
+                      <span key={res} style={{ fontSize: '0.95rem', color: '#ddd' }}>
+                        {HEX_ICON[res]} {humanPlayer.resources[res] || 0}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <button className="btn btn-secondary" onClick={handleEndTurn} disabled={!isMyTurn || mustMoveRobber || mustDiscard} style={{ marginTop: '10px' }}>
                 End Turn
