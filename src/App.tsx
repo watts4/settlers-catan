@@ -1683,36 +1683,77 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           );
         }
 
-        // Settlement: house with pitched roof
-        const bx = cx - 8, by = cy - 4; // wall top-left
-        const bw = 16, bh = 10;         // wall size
-        // Roof left half (lighter) and right half (darker) for 3D effect
-        const roofLeft = `${bx - 3},${by} ${cx},${by - 9} ${cx},${by}`;
-        const roofRight = `${cx},${by - 9} ${bx + bw + 3},${by} ${cx},${by}`;
+        // Settlement: realistic wooden game piece — larger, 3D, with wood texture
+        const size = 1.4; // scale factor
+        const bx = cx - 10 * size, by = cy - 5 * size;
+        const bw = 20 * size, bh = 13 * size;
+        const roofPeak = by - 11 * size;
+        const roofOverhang = 3 * size;
+        // Unique gradient IDs per settlement
+        const wallGradId = `wall-${key}`;
+        const roofGradId = `roof-${key}`;
         return (
           <g key={key} filter="url(#building-shadow)">
-            {/* Walls */}
+            <defs>
+              {/* Wall gradient — wooden face with light from upper-left */}
+              <linearGradient id={wallGradId} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor={p.color} stopOpacity="1" />
+                <stop offset="40%" stopColor={p.color} stopOpacity="0.95" />
+                <stop offset="100%" stopColor="rgba(0,0,0,0.25)" stopOpacity="1" />
+              </linearGradient>
+              {/* Roof gradient — lit left, shadowed right */}
+              <linearGradient id={roofGradId} x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor={p.color} stopOpacity="1" />
+                <stop offset="50%" stopColor={p.color} stopOpacity="0.9" />
+                <stop offset="100%" stopColor="rgba(0,0,0,0.3)" stopOpacity="1" />
+              </linearGradient>
+            </defs>
+            {/* Base/platform — gives grounding */}
+            <rect x={bx - 1} y={by + bh - 1} width={bw + 2} height={3 * size}
+              rx={1} fill="rgba(0,0,0,0.35)" />
+            {/* Main wall body */}
             <rect x={bx} y={by} width={bw} height={bh}
-              fill={p.color} stroke="#000" strokeWidth="1.5" />
-            {/* Wall highlight (top edge) */}
-            <rect x={bx} y={by} width={bw} height={2}
-              fill="rgba(255,255,255,0.2)" />
+              rx={1.2} fill={`url(#${wallGradId})`} stroke="#000" strokeWidth="1.8" />
+            {/* Wood grain lines on wall */}
+            <line x1={bx + 2} y1={by + 3 * size} x2={bx + bw - 2} y2={by + 3 * size}
+              stroke="rgba(0,0,0,0.12)" strokeWidth="0.6" />
+            <line x1={bx + 2} y1={by + 7 * size} x2={bx + bw - 2} y2={by + 7 * size}
+              stroke="rgba(0,0,0,0.12)" strokeWidth="0.6" />
+            <line x1={bx + 2} y1={by + 10 * size} x2={bx + bw - 2} y2={by + 10 * size}
+              stroke="rgba(0,0,0,0.08)" strokeWidth="0.5" />
+            {/* Wall highlight (top edge bevel) */}
+            <rect x={bx + 0.5} y={by + 0.5} width={bw - 1} height={2.5}
+              rx={1} fill="rgba(255,255,255,0.25)" />
             {/* Wall shadow (bottom edge) */}
             <rect x={bx} y={by + bh - 3} width={bw} height={3}
               fill="rgba(0,0,0,0.2)" />
-            {/* Door */}
-            <rect x={cx - 2} y={by + bh - 5} width={4} height={5}
-              fill="rgba(0,0,0,0.35)" />
-            {/* Roof - left side (lit) */}
-            <polygon points={roofLeft}
-              fill={p.color} stroke="#000" strokeWidth="1.5" />
-            <polygon points={roofLeft}
-              fill="rgba(255,255,255,0.18)" stroke="none" />
-            {/* Roof - right side (shadow) */}
-            <polygon points={roofRight}
-              fill={p.color} stroke="#000" strokeWidth="1.5" />
-            <polygon points={roofRight}
-              fill="rgba(0,0,0,0.18)" stroke="none" />
+            {/* Door — recessed look */}
+            <rect x={cx - 3 * size} y={by + bh - 7 * size} width={6 * size} height={7 * size}
+              rx={0.8} fill="rgba(0,0,0,0.3)" stroke="rgba(0,0,0,0.15)" strokeWidth="0.5" />
+            {/* Door highlight */}
+            <rect x={cx - 2.5 * size} y={by + bh - 6.5 * size} width={2 * size} height={6 * size}
+              fill="rgba(255,255,255,0.06)" />
+            {/* Roof — full triangle, filled with gradient */}
+            <polygon
+              points={`${bx - roofOverhang},${by} ${cx},${roofPeak} ${bx + bw + roofOverhang},${by}`}
+              fill={`url(#${roofGradId})`} stroke="#000" strokeWidth="1.8"
+              strokeLinejoin="round" />
+            {/* Roof left highlight */}
+            <polygon
+              points={`${bx - roofOverhang},${by} ${cx},${roofPeak} ${cx},${by}`}
+              fill="rgba(255,255,255,0.2)" stroke="none" />
+            {/* Roof right shadow */}
+            <polygon
+              points={`${cx},${roofPeak} ${bx + bw + roofOverhang},${by} ${cx},${by}`}
+              fill="rgba(0,0,0,0.15)" stroke="none" />
+            {/* Roof ridge highlight */}
+            <line x1={cx} y1={roofPeak} x2={cx} y2={by}
+              stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+            {/* Chimney */}
+            <rect x={cx + 4 * size} y={roofPeak + 3 * size} width={3 * size} height={5 * size}
+              fill={p.color} stroke="#000" strokeWidth="1" />
+            <rect x={cx + 4 * size} y={roofPeak + 3 * size} width={3 * size} height={1.5}
+              fill="rgba(255,255,255,0.2)" />
           </g>
         );
       })
@@ -1855,14 +1896,21 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             ref={el => { playerCardRefs.current[player.id] = el; }}
             className={`player-card ${player.id === game.currentPlayer ? 'active' : ''}`}
             style={{ '--player-color': player.color } as React.CSSProperties}>
-            <div className="player-name" style={{ color: player.color }}>{player.name}</div>
-            <div className="player-vp">
-              VP: {getDisplayVP(player)}
+            <div className="player-name" style={{ color: player.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {player.name}
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', marginLeft: '2px' }} title={`Victory Points: ${getDisplayVP(player)}`}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ verticalAlign: 'middle' }}>
+                  <path d="M12 2L9 8.5H3L7.5 12.5L5.5 19L12 15L18.5 19L16.5 12.5L21 8.5H15L12 2Z" fill="#ffd700" stroke="#b8960c" strokeWidth="1"/>
+                  <path d="M7 20H17V22H7V20Z" fill="#ffd700" stroke="#b8960c" strokeWidth="0.5"/>
+                  <path d="M5 22H19V23H5V22Z" fill="#daa520"/>
+                </svg>
+                <span style={{ color: '#ffd700', fontWeight: 800, fontSize: '0.85rem', textShadow: '0 0 6px rgba(255,215,0,0.3)' }}>{getDisplayVP(player)}</span>
+              </span>
               {game.longestRoadHolder === player.id && (
-                <span style={{ marginLeft: '6px', fontSize: '0.8em' }} title="Longest Road">🛣️</span>
+                <span style={{ fontSize: '0.75em' }} title="Longest Road">🛣️</span>
               )}
               {game.largestArmyHolder === player.id && (
-                <span style={{ marginLeft: '4px', fontSize: '0.8em' }} title="Largest Army">⚔️</span>
+                <span style={{ fontSize: '0.75em' }} title="Largest Army">⚔️</span>
               )}
             </div>
             <div className="player-stats">
@@ -2483,33 +2531,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             );
           })()}
 
-          {/* Floating build button — centered bottom of board */}
-          {game.phase === 'playing' && (() => {
-            const canBuildAnything = isMyTurn && !mustMoveRobber && !mustDiscard && game.dice
-              && (canBuildRoad || canBuildSettlement || canBuildCity || canBuildDevCard);
-            const isActive = isMyTurn && !mustMoveRobber && !mustDiscard && !!game.dice;
-            return (
-              <button
-                onClick={() => isActive && setBuildModalOpen(true)}
-                title="Build / Buy"
-                style={{
-                  position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
-                  background: 'rgba(18, 12, 6, 0.88)',
-                  border: `2px solid ${canBuildAnything ? '#e67e22' : '#3a3020'}`,
-                  borderRadius: '12px', padding: '7px 14px',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-                  cursor: isActive ? 'pointer' : 'default',
-                  zIndex: 10, backdropFilter: 'blur(4px)',
-                  boxShadow: canBuildAnything ? '0 0 12px rgba(230,126,34,0.35)' : 'none',
-                  transition: 'border-color 0.3s, box-shadow 0.3s',
-                  animation: canBuildAnything ? 'floating-build-glow 1.6s ease-in-out infinite' : 'none',
-                }}
-              >
-                <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>⚒️</span>
-                <span style={{ fontSize: '0.6rem', color: isActive ? '#f0a060' : '#555', fontWeight: 600, letterSpacing: '0.02em' }}>BUILD</span>
-              </button>
-            );
-          })()}
+          {/* Build button moved to action panel */}
 
           {/* Build / Buy modal */}
           {buildModalOpen && (() => {
@@ -2638,7 +2660,34 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             </div>
           ) : (
             <>
-              <h3>Actions</h3>
+              {/* Build button — centered above resources */}
+              {game.phase === 'playing' && (() => {
+                const canBuildAnythingAction = isMyTurn && !mustMoveRobber && !mustDiscard && game.dice
+                  && (canBuildRoad || canBuildSettlement || canBuildCity || canBuildDevCard);
+                const isActiveAction = isMyTurn && !mustMoveRobber && !mustDiscard && !!game.dice;
+                return (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
+                    <button
+                      onClick={() => isActiveAction && setBuildModalOpen(true)}
+                      title="Build / Buy"
+                      style={{
+                        background: 'rgba(18, 12, 6, 0.88)',
+                        border: `2px solid ${canBuildAnythingAction ? '#e67e22' : '#3a3020'}`,
+                        borderRadius: '12px', padding: '7px 18px',
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        cursor: isActiveAction ? 'pointer' : 'default',
+                        backdropFilter: 'blur(4px)',
+                        boxShadow: canBuildAnythingAction ? '0 0 12px rgba(230,126,34,0.35)' : 'none',
+                        transition: 'border-color 0.3s, box-shadow 0.3s',
+                        animation: canBuildAnythingAction ? 'floating-build-glow 1.6s ease-in-out infinite' : 'none',
+                      }}
+                    >
+                      <span style={{ fontSize: '1.3rem', lineHeight: 1 }}>⚒️</span>
+                      <span style={{ fontSize: '0.75rem', color: isActiveAction ? '#f0a060' : '#555', fontWeight: 600, letterSpacing: '0.05em' }}>BUILD</span>
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Discard UI — shown when rolling 7 with 8+ cards */}
               {humanDiscardPending && (() => {
