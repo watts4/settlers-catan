@@ -1598,12 +1598,34 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         <stop offset="20%" stopColor="rgba(255,255,255,0.1)" />
         <stop offset="100%" stopColor="rgba(0,0,0,0.38)" />
       </radialGradient>
-      {/* Table surface — darker wood surrounding the board */}
-      <radialGradient id="table-surface" cx="50%" cy="50%" r="70%">
-        <stop offset="0%" stopColor="#5a3a1a" />
-        <stop offset="60%" stopColor="#4a2c10" />
+      {/* Table surface — old pub wood base color */}
+      <radialGradient id="table-surface-grad" cx="50%" cy="50%" r="75%">
+        <stop offset="0%" stopColor="#5a3818" />
+        <stop offset="50%" stopColor="#4a2c10" />
         <stop offset="100%" stopColor="#3a1e08" />
       </radialGradient>
+      {/* Wood plank grain pattern */}
+      <pattern id="table-wood-grain" x="0" y="0" width="1240" height="80" patternUnits="userSpaceOnUse">
+        {/* Plank lines — horizontal boards */}
+        <rect width="1240" height="80" fill="transparent" />
+        <line x1="0" y1="0" x2="1240" y2="0" stroke="rgba(0,0,0,0.25)" strokeWidth="2" />
+        <line x1="0" y1="79" x2="1240" y2="79" stroke="rgba(0,0,0,0.15)" strokeWidth="1" />
+        {/* Wood grain within each plank */}
+        <line x1="0" y1="18" x2="1240" y2="16" stroke="rgba(0,0,0,0.06)" strokeWidth="1.5" />
+        <line x1="0" y1="35" x2="1240" y2="37" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
+        <line x1="0" y1="52" x2="1240" y2="50" stroke="rgba(0,0,0,0.05)" strokeWidth="1" />
+        <line x1="0" y1="65" x2="1240" y2="66" stroke="rgba(255,255,255,0.02)" strokeWidth="0.8" />
+        {/* Knot holes */}
+        <circle cx="280" cy="40" r="6" fill="rgba(0,0,0,0.12)" />
+        <circle cx="280" cy="40" r="3" fill="rgba(0,0,0,0.08)" />
+        <circle cx="820" cy="25" r="4" fill="rgba(0,0,0,0.1)" />
+        <circle cx="1100" cy="55" r="5" fill="rgba(0,0,0,0.1)" />
+      </pattern>
+      {/* Table surface — combined as a filter/composite */}
+      <pattern id="table-surface" x="-620" y="-620" width="1240" height="1240" patternUnits="userSpaceOnUse">
+        <rect width="1240" height="1240" fill="url(#table-surface-grad)" />
+        <rect width="1240" height="1240" fill="url(#table-wood-grain)" />
+      </pattern>
       {/* Cigar wrapper texture */}
       <pattern id="cigar-wrap" x="0" y="0" width="6" height="14" patternUnits="userSpaceOnUse">
         <line x1="0" y1="0" x2="0" y2="14" stroke="rgba(0,0,0,0.08)" strokeWidth="1" />
@@ -2150,12 +2172,18 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         {/* Slight aging/yellowing */}
         <rect x={-pw / 2} y={-ph / 2} width={pw} height={ph} rx={1.5}
           fill="rgba(200,180,120,0.06)" />
-        {/* Photo area — dark background */}
+        {/* Photo area — sunny sky background */}
         <rect x={-pw / 2 + border} y={-ph / 2 + border} width={pw - border * 2} height={ph - border - bottomBorder}
-          fill="#1a1a2a" rx={1} />
-        {/* Indoor scene — warm floor */}
-        <rect x={-pw / 2 + border} y={10} width={pw - border * 2} height={ph / 2 - bottomBorder - 6}
-          fill="#4a3a28" />
+          fill="#7ab8d4" rx={1} />
+        {/* Lighter sky at top */}
+        <rect x={-pw / 2 + border} y={-ph / 2 + border} width={pw - border * 2} height={20}
+          fill="#a8d8ea" rx={1} />
+        {/* Sunlit wooden floor / porch */}
+        <rect x={-pw / 2 + border} y={6} width={pw - border * 2} height={ph / 2 - bottomBorder - 2}
+          fill="#c8a872" />
+        {/* Floor highlight */}
+        <rect x={-pw / 2 + border} y={6} width={pw - border * 2} height={4}
+          fill="rgba(255,255,255,0.15)" />
         {/* Black cat body — sitting, facing slightly right */}
         <ellipse cx={0} cy={8} rx={12} ry={10} fill="#1a1a1a" />
         {/* Cat head */}
@@ -2188,13 +2216,33 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         <ellipse cx={-5} cy={16} rx={3} ry={2} fill="#1a1a1a" />
         <ellipse cx={5} cy={16} rx={3} ry={2} fill="#1a1a1a" />
         {/* Cat fur shine */}
-        <path d="M-6,2 Q-2,-2 2,2" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+        <path d="M-6,2 Q-2,-2 2,2" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
         {/* Photo gloss/reflection */}
-        <rect x={-pw / 2 + border} y={-ph / 2 + border} width={pw - border * 2} height={12}
-          fill="rgba(255,255,255,0.06)" />
+        <rect x={-pw / 2 + border} y={-ph / 2 + border} width={pw - border * 2} height={15}
+          fill="rgba(255,255,255,0.1)" />
       </g>
     );
   };
+
+  const renderCoin = (x: number, y: number, angle: number, idx: number) => (
+    <g key={`coin-${idx}`} transform={`translate(${x},${y}) rotate(${angle})`}>
+      {/* Shadow */}
+      <ellipse cx="1.5" cy="2" rx="10" ry="3.5" fill="rgba(0,0,0,0.2)" />
+      {/* Coin edge (thickness) */}
+      <ellipse cx="0" cy="1.5" rx="9" ry="3" fill="#5a5a5a" stroke="#3a3a3a" strokeWidth="0.5" />
+      {/* Coin face */}
+      <ellipse cx="0" cy="0" rx="9" ry="3" fill="#7a7a78" stroke="#5a5a58" strokeWidth="1" />
+      {/* Tarnish/patina */}
+      <ellipse cx="-1" cy="-0.3" rx="6" ry="2" fill="rgba(90,100,85,0.3)" />
+      {/* Worn stamp/design — simple cross */}
+      <line x1="-3" y1="0" x2="3" y2="0" stroke="rgba(100,100,95,0.4)" strokeWidth="0.8" />
+      <line x1="0" y1="-1.2" x2="0" y2="1.2" stroke="rgba(100,100,95,0.4)" strokeWidth="0.8" />
+      {/* Highlight edge */}
+      <ellipse cx="0" cy="0" rx="9" ry="3" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
+      {/* Rim highlight */}
+      <path d="M-8,-1.5 Q0,-3.5 8,-1.5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.6" />
+    </g>
+  );
 
   const renderPiecePiles = () =>
     game.players.map((player, idx) => {
@@ -2232,13 +2280,22 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
       // Hildeguard's personal items — wooden mug and cigar
       if (idx === 1) {
-        elements.push(renderWoodenCup(corner.x + 220, corner.y + 50));
-        elements.push(renderCigar(corner.x - 70, corner.y + 80));
+        elements.push(renderWoodenCup(corner.x - 140, corner.y + 40));
+        elements.push(renderCigar(corner.x - 200, corner.y + 120));
       }
 
-      // Tammy's polaroid of her black cat
+      // Steve's area — a few old coins scattered
+      if (idx === 2) {
+        elements.push(renderCoin(corner.x + 185, corner.y + 35, 12, idx * 100 + 50));
+        elements.push(renderCoin(corner.x + 175, corner.y + 70, -20, idx * 100 + 51));
+        elements.push(renderCoin(corner.x + 200, corner.y + 90, 8, idx * 100 + 52));
+      }
+
+      // Tammy's area — polaroid and a couple coins
       if (idx === 3) {
         elements.push(renderPolaroid(corner.x + 200, corner.y + 40));
+        elements.push(renderCoin(corner.x + 180, corner.y + 120, -15, idx * 100 + 50));
+        elements.push(renderCoin(corner.x + 210, corner.y + 135, 25, idx * 100 + 51));
       }
 
       return <g key={`pile-${idx}`}>{elements}</g>;
@@ -2419,9 +2476,26 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               }
             }}>
             {renderBoardDefs()}
-            {/* Table surface background — extends beyond the hex grid */}
+            {/* Table surface background — old pub table */}
             <rect x={TABLE_VB.x} y={TABLE_VB.y} width={TABLE_VB.w} height={TABLE_VB.h}
               fill="url(#table-surface)" rx="20" />
+            {/* Table edge darkening */}
+            <rect x={TABLE_VB.x} y={TABLE_VB.y} width={TABLE_VB.w} height={TABLE_VB.h}
+              rx="20" fill="none" stroke="rgba(0,0,0,0.4)" strokeWidth="8" />
+            {/* Scratches and wear marks */}
+            <line x1="-400" y1="-380" x2="-320" y2="-370" stroke="rgba(255,255,255,0.04)" strokeWidth="1.5" />
+            <line x1="350" y1="400" x2="420" y2="395" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
+            <line x1="-450" y1="420" x2="-380" y2="430" stroke="rgba(0,0,0,0.08)" strokeWidth="1.5" />
+            <line x1="400" y1="-450" x2="480" y2="-445" stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
+            <line x1="-200" y1="480" x2="-120" y2="475" stroke="rgba(0,0,0,0.06)" strokeWidth="1" />
+            {/* Ring stains — old mug marks */}
+            <circle cx="-380" cy="-420" r="18" fill="none" stroke="rgba(60,40,20,0.12)" strokeWidth="3" />
+            <circle cx="-380" cy="-420" r="16" fill="none" stroke="rgba(60,40,20,0.06)" strokeWidth="1" />
+            <circle cx="420" cy="450" r="15" fill="none" stroke="rgba(50,30,15,0.1)" strokeWidth="2.5" />
+            <circle cx="-420" cy="480" r="20" fill="none" stroke="rgba(60,40,20,0.08)" strokeWidth="3" />
+            {/* Dark water/ale stain blotch */}
+            <ellipse cx="200" cy="-480" rx="25" ry="12" fill="rgba(40,25,10,0.1)" transform="rotate(-15,200,-480)" />
+            <ellipse cx="-350" cy="500" rx="18" ry="10" fill="rgba(40,25,10,0.08)" transform="rotate(8,-350,500)" />
             {/* Piece piles around the table */}
             {renderPiecePiles()}
             {game.board.hexes.map(renderHex)}
