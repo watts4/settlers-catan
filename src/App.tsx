@@ -2042,7 +2042,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
   const renderWoodenCup = (x: number, y: number) => {
     // Human-sized wooden mug — proportional to the game pieces on the table
-    const s = 3.5; // scale factor for a proper mug
+    const s = 10.5; // scale factor — 3x human-sized
     return (
       <g key="wooden-cup">
         {/* Shadow on table */}
@@ -2084,7 +2084,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   };
 
   const renderCigar = (x: number, y: number) => (
-    <g key="cigar" transform={`translate(${x},${y}) rotate(-12)`}>
+    <g key="cigar" transform={`translate(${x},${y}) rotate(-12) scale(2)`}>
       {/* Shadow on table */}
       <ellipse cx="2" cy="6" rx="52" ry="5" fill="rgba(0,0,0,0.25)" />
       {/* Cigar body — long tapered cylinder */}
@@ -2148,8 +2148,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
       // Hildeguard's personal items — wooden mug and cigar
       if (idx === 1) {
-        elements.push(renderWoodenCup(corner.x + 200, corner.y + 45));
-        elements.push(renderCigar(corner.x + 135, corner.y + 130));
+        elements.push(renderWoodenCup(corner.x + 220, corner.y + 50));
+        elements.push(renderCigar(corner.x - 70, corner.y + 80));
       }
 
       return <g key={`pile-${idx}`}>{elements}</g>;
