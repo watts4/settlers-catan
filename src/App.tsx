@@ -315,7 +315,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [discardSelection, setDiscardSelection] = useState<Partial<Record<Resource, number>>>({});
 
   // ── Board pan/zoom state ─────────────────────────────────────────────────
-  const DEFAULT_VB = { x: -310, y: -310, w: 620, h: 620 }; // initial view — tight on hex grid
+  const DEFAULT_VB = { x: -280, y: -280, w: 560, h: 560 }; // initial view — tight on hex grid
   const TABLE_VB = { x: -620, y: -620, w: 1240, h: 1240 }; // full table bounds
   const MIN_VB_SIZE = 300; // max zoom in
   const MAX_VB_SIZE = TABLE_VB.w; // max zoom out = full table
@@ -2112,6 +2112,68 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     </g>
   );
 
+  const renderPolaroid = (x: number, y: number) => {
+    // Polaroid photo of a black cat, tilted slightly left
+    const pw = 70, ph = 85; // polaroid dimensions
+    const border = 6; // white border
+    const bottomBorder = 18; // thicker bottom for polaroid style
+    return (
+      <g key="polaroid" transform={`translate(${x},${y}) rotate(-8)`}>
+        {/* Shadow on table */}
+        <rect x={-pw / 2 + 4} y={-ph / 2 + 6} width={pw} height={ph} rx={2}
+          fill="rgba(0,0,0,0.35)" />
+        {/* White polaroid frame */}
+        <rect x={-pw / 2} y={-ph / 2} width={pw} height={ph} rx={1.5}
+          fill="#f5f0e8" stroke="#d0c8b8" strokeWidth="0.8" />
+        {/* Slight aging/yellowing */}
+        <rect x={-pw / 2} y={-ph / 2} width={pw} height={ph} rx={1.5}
+          fill="rgba(200,180,120,0.06)" />
+        {/* Photo area — dark background */}
+        <rect x={-pw / 2 + border} y={-ph / 2 + border} width={pw - border * 2} height={ph - border - bottomBorder}
+          fill="#1a1a2a" rx={1} />
+        {/* Indoor scene — warm floor */}
+        <rect x={-pw / 2 + border} y={10} width={pw - border * 2} height={ph / 2 - bottomBorder - 6}
+          fill="#4a3a28" />
+        {/* Black cat body — sitting, facing slightly right */}
+        <ellipse cx={0} cy={8} rx={12} ry={10} fill="#1a1a1a" />
+        {/* Cat head */}
+        <circle cx={2} cy={-4} r={8} fill="#1a1a1a" />
+        {/* Ears — triangular */}
+        <polygon points="-3,-11 -6,-4 0,-5" fill="#1a1a1a" />
+        <polygon points="7,-11 4,-4 10,-5" fill="#1a1a1a" />
+        {/* Inner ears — pink */}
+        <polygon points="-2.5,-9 -5,-5 0,-5.5" fill="#5a3a3a" />
+        <polygon points="6.5,-9 4.5,-5 9,-5.5" fill="#5a3a3a" />
+        {/* Eyes — glowing green */}
+        <ellipse cx={-2} cy={-4.5} rx={2} ry={1.8} fill="#2a5a2a" />
+        <ellipse cx={5} cy={-4.5} rx={2} ry={1.8} fill="#2a5a2a" />
+        {/* Pupils */}
+        <ellipse cx={-1.5} cy={-4.5} rx={0.8} ry={1.6} fill="#000" />
+        <ellipse cx={5.5} cy={-4.5} rx={0.8} ry={1.6} fill="#000" />
+        {/* Eye shine */}
+        <circle cx={-2.5} cy={-5.2} r={0.6} fill="rgba(255,255,255,0.7)" />
+        <circle cx={4.5} cy={-5.2} r={0.6} fill="rgba(255,255,255,0.7)" />
+        {/* Nose — tiny pink triangle */}
+        <polygon points="1.5,-1.5 1,-0.5 2,-0.5" fill="#8a5a5a" />
+        {/* Whiskers */}
+        <line x1={-3} y1={-1} x2={-12} y2={-3} stroke="#444" strokeWidth="0.5" />
+        <line x1={-3} y1={0} x2={-12} y2={1} stroke="#444" strokeWidth="0.5" />
+        <line x1={6} y1={-1} x2={14} y2={-3} stroke="#444" strokeWidth="0.5" />
+        <line x1={6} y1={0} x2={14} y2={1} stroke="#444" strokeWidth="0.5" />
+        {/* Tail — curving to the right */}
+        <path d="M10,12 Q18,8 20,0 Q21,-4 18,-6" fill="none" stroke="#1a1a1a" strokeWidth="3.5" strokeLinecap="round" />
+        {/* Front paws */}
+        <ellipse cx={-5} cy={16} rx={3} ry={2} fill="#1a1a1a" />
+        <ellipse cx={5} cy={16} rx={3} ry={2} fill="#1a1a1a" />
+        {/* Cat fur shine */}
+        <path d="M-6,2 Q-2,-2 2,2" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+        {/* Photo gloss/reflection */}
+        <rect x={-pw / 2 + border} y={-ph / 2 + border} width={pw - border * 2} height={12}
+          fill="rgba(255,255,255,0.06)" />
+      </g>
+    );
+  };
+
   const renderPiecePiles = () =>
     game.players.map((player, idx) => {
       const corner = PILE_CORNERS[idx];
@@ -2150,6 +2212,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       if (idx === 1) {
         elements.push(renderWoodenCup(corner.x + 220, corner.y + 50));
         elements.push(renderCigar(corner.x - 70, corner.y + 80));
+      }
+
+      // Tammy's polaroid of her black cat
+      if (idx === 3) {
+        elements.push(renderPolaroid(corner.x + 200, corner.y + 40));
       }
 
       return <g key={`pile-${idx}`}>{elements}</g>;
@@ -2487,40 +2554,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             );
           })()}
 
-          {/* Floating trade buttons — lower-right of board */}
-          {game.phase === 'playing' && (() => {
-            const canTrade = isMyTurn && !!game.dice && !mustMoveRobber && !mustDiscard;
-            const hasIncomingTrade = !!aiTradeProposal;
-            const playersBtnActive = canTrade || hasIncomingTrade;
-            const playersGlow = hasIncomingTrade && !playerTradeModalOpen;
-            const btnStyle = (active: boolean, glow = false): React.CSSProperties => ({
-              background: 'rgba(18, 12, 6, 0.88)',
-              border: `2px solid ${glow ? '#ffd700' : active ? '#27ae60' : '#3a4a3a'}`,
-              borderRadius: '12px',
-              padding: '7px 11px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '2px',
-              cursor: active ? 'pointer' : 'default',
-              backdropFilter: 'blur(4px)',
-              transition: 'border-color 0.3s',
-              animation: glow ? 'floating-dice-glow 1.4s ease-in-out infinite' : 'none',
-              boxShadow: glow ? undefined : active ? '0 0 10px rgba(39,174,96,0.3)' : 'none',
-            });
-            return (
-              <div style={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', gap: '8px', zIndex: 10 }}>
-                <button style={btnStyle(playersBtnActive, playersGlow)} onClick={() => playersBtnActive && setPlayerTradeModalOpen(true)} title={hasIncomingTrade ? 'Incoming trade offer!' : 'Trade with Players'}>
-                  <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>🤝</span>
-                  <span style={{ fontSize: '0.6rem', color: playersGlow ? '#ffd700' : playersBtnActive ? '#7dde9a' : '#555', fontWeight: 600, letterSpacing: '0.02em' }}>PLAYERS</span>
-                </button>
-                <button style={btnStyle(canTrade)} onClick={() => canTrade && setBankTradeModalOpen(true)} title="Trade with Bank">
-                  <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>🏦</span>
-                  <span style={{ fontSize: '0.6rem', color: canTrade ? '#7dde9a' : '#555', fontWeight: 600, letterSpacing: '0.02em' }}>BANK</span>
-                </button>
-              </div>
-            );
-          })()}
+          {/* Trade buttons moved to action panel */}
 
           {/* Bank Trade Modal */}
           {bankTradeModalOpen && (() => {
@@ -3010,27 +3044,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             );
           })()}
 
-          {/* Floating dice button — lower-left of board */}
-          {game.phase === 'playing' && (() => {
-            const needsRoll = isMyTurn && !game.dice && !isRolling;
-            const dieClass = (extra: string) =>
-              `die floating-die${isRolling ? ' die-rolling' : game.dice ? ' die-landed' : ''}${extra}`;
-            return (
-              <button
-                className={`floating-dice-btn${needsRoll ? ' dice-glow' : ''}`}
-                onClick={needsRoll ? handleRollDice : undefined}
-                disabled={!needsRoll && !isRolling && !game.dice}
-                title={needsRoll ? 'Roll Dice' : game.dice ? `${game.dice[0]} + ${game.dice[1]} = ${game.dice[0] + game.dice[1]}` : ''}
-              >
-                <span className={dieClass('')}>
-                  <DiceDots value={isRolling ? animDice[0] : game.dice ? game.dice[0] : null} />
-                </span>
-                <span className={dieClass('')}>
-                  <DiceDots value={isRolling ? animDice[1] : game.dice ? game.dice[1] : null} />
-                </span>
-              </button>
-            );
-          })()}
+          {/* Dice moved to action panel */}
         </div>
 
         {/* Action Panel — hidden during setup */}
@@ -3046,30 +3060,76 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             </div>
           ) : (
             <>
-              {/* Build button — centered above resources */}
+              {/* Action row: Dice | Build | Trade buttons */}
               {game.phase === 'playing' && (() => {
                 const canBuildAnythingAction = isMyTurn && !mustMoveRobber && !mustDiscard && game.dice
                   && (canBuildRoad || canBuildSettlement || canBuildCity || canBuildDevCard);
                 const isActiveAction = isMyTurn && !mustMoveRobber && !mustDiscard && !!game.dice;
+                const needsRoll = isMyTurn && !game.dice && !isRolling;
+                const canTrade = isMyTurn && !!game.dice && !mustMoveRobber && !mustDiscard;
+                const hasIncomingTrade = !!aiTradeProposal;
+                const playersBtnActive = canTrade || hasIncomingTrade;
+                const playersGlow = hasIncomingTrade && !playerTradeModalOpen;
+                const dieClass = (extra: string) =>
+                  `die floating-die${isRolling ? ' die-rolling' : game.dice ? ' die-landed' : ''}${extra}`;
+                const actionBtnStyle = (active: boolean, borderColor: string, glow = false, glowColor = ''): React.CSSProperties => ({
+                  background: 'rgba(18, 12, 6, 0.88)',
+                  border: `2px solid ${borderColor}`,
+                  borderRadius: '10px', padding: '6px 10px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: active ? 'pointer' : 'default',
+                  transition: 'border-color 0.3s, box-shadow 0.3s',
+                  boxShadow: glow ? `0 0 12px ${glowColor}` : 'none',
+                  animation: glow ? 'floating-build-glow 1.6s ease-in-out infinite' : 'none',
+                });
                 return (
-                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                    {/* Dice */}
+                    <button
+                      className={needsRoll ? 'dice-glow' : ''}
+                      onClick={needsRoll ? handleRollDice : undefined}
+                      disabled={!needsRoll && !isRolling && !game.dice}
+                      title={needsRoll ? 'Roll Dice' : game.dice ? `${game.dice[0]} + ${game.dice[1]} = ${game.dice[0] + game.dice[1]}` : ''}
+                      style={{
+                        ...actionBtnStyle(needsRoll, needsRoll ? '#ffd700' : '#555', needsRoll, 'rgba(255,215,0,0.35)'),
+                        gap: '4px',
+                      }}
+                    >
+                      <span className={dieClass('')} style={{ width: '30px', height: '30px', fontSize: '1rem' }}>
+                        <DiceDots value={isRolling ? animDice[0] : game.dice ? game.dice[0] : null} />
+                      </span>
+                      <span className={dieClass('')} style={{ width: '30px', height: '30px', fontSize: '1rem' }}>
+                        <DiceDots value={isRolling ? animDice[1] : game.dice ? game.dice[1] : null} />
+                      </span>
+                    </button>
+
+                    {/* Build */}
                     <button
                       onClick={() => isActiveAction && setBuildModalOpen(true)}
                       title="Build / Buy"
+                      style={actionBtnStyle(isActiveAction, canBuildAnythingAction ? '#e67e22' : '#3a3020', !!canBuildAnythingAction, 'rgba(230,126,34,0.35)')}
+                    >
+                      <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>⚒️</span>
+                    </button>
+
+                    {/* Trade: Players */}
+                    <button
+                      onClick={() => playersBtnActive && setPlayerTradeModalOpen(true)}
+                      title={hasIncomingTrade ? 'Incoming trade offer!' : 'Trade with Players'}
                       style={{
-                        background: 'rgba(18, 12, 6, 0.88)',
-                        border: `2px solid ${canBuildAnythingAction ? '#e67e22' : '#3a3020'}`,
-                        borderRadius: '12px', padding: '7px 18px',
-                        display: 'flex', alignItems: 'center', gap: '6px',
-                        cursor: isActiveAction ? 'pointer' : 'default',
-                        backdropFilter: 'blur(4px)',
-                        boxShadow: canBuildAnythingAction ? '0 0 12px rgba(230,126,34,0.35)' : 'none',
-                        transition: 'border-color 0.3s, box-shadow 0.3s',
-                        animation: canBuildAnythingAction ? 'floating-build-glow 1.6s ease-in-out infinite' : 'none',
+                        ...actionBtnStyle(playersBtnActive, playersGlow ? '#ffd700' : playersBtnActive ? '#27ae60' : '#3a4a3a', playersGlow, 'rgba(255,215,0,0.35)'),
                       }}
                     >
-                      <span style={{ fontSize: '1.3rem', lineHeight: 1 }}>⚒️</span>
-                      <span style={{ fontSize: '0.75rem', color: isActiveAction ? '#f0a060' : '#555', fontWeight: 600, letterSpacing: '0.05em' }}>BUILD</span>
+                      <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>🤝</span>
+                    </button>
+
+                    {/* Trade: Bank */}
+                    <button
+                      onClick={() => canTrade && setBankTradeModalOpen(true)}
+                      title="Trade with Bank"
+                      style={actionBtnStyle(canTrade, canTrade ? '#27ae60' : '#3a4a3a')}
+                    >
+                      <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>🏦</span>
                     </button>
                   </div>
                 );
