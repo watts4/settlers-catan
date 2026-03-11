@@ -324,6 +324,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const panStartRef = useRef({ x: 0, y: 0, vbx: 0, vby: 0 });
   const panMoved = useRef(false);
   const svgRef = useRef<SVGSVGElement>(null);
+  // Pinch-to-zoom tracking
+  const pinchStartDist = useRef(0);
+  const pinchStartVB = useRef({ x: 0, y: 0, w: 0, h: 0 });
+  const pinchMidRef = useRef({ x: 0, y: 0 });
   const afterHumanDiscardRef = useRef<((s: GameState) => GameState) | null>(null);
 
   // ── Multiplayer sync ────────────────────────────────────────────────────────
@@ -1600,6 +1604,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         <stop offset="60%" stopColor="#4a2c10" />
         <stop offset="100%" stopColor="#3a1e08" />
       </radialGradient>
+      {/* Cigar wrapper texture */}
+      <pattern id="cigar-wrap" x="0" y="0" width="6" height="14" patternUnits="userSpaceOnUse">
+        <line x1="0" y1="0" x2="0" y2="14" stroke="rgba(0,0,0,0.08)" strokeWidth="1" />
+        <line x1="3" y1="0" x2="3" y2="14" stroke="rgba(255,255,255,0.04)" strokeWidth="0.5" />
+      </pattern>
     </defs>
   );
 
@@ -2031,31 +2040,75 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     );
   };
 
-  const renderWoodenCup = (x: number, y: number) => (
-    <g key="wooden-cup">
+  const renderWoodenCup = (x: number, y: number) => {
+    // Human-sized wooden mug — proportional to the game pieces on the table
+    const s = 3.5; // scale factor for a proper mug
+    return (
+      <g key="wooden-cup">
+        {/* Shadow on table */}
+        <ellipse cx={x + 3} cy={y + 22 * s / 2 + 8} rx={14 * s / 2} ry={5 * s / 2} fill="rgba(0,0,0,0.35)" />
+        {/* Cup body — tapered */}
+        <path d={`M${x - 10 * s / 2},${y - 10 * s / 2} L${x - 12 * s / 2},${y + 18 * s / 2} Q${x},${y + 24 * s / 2} ${x + 12 * s / 2},${y + 18 * s / 2} L${x + 10 * s / 2},${y - 10 * s / 2} Z`}
+          fill="#6b3a10" stroke="#3a1e08" strokeWidth="2" />
+        {/* Wood grain lines */}
+        <line x1={x - 11 * s / 2} y1={y - 2 * s / 2} x2={x + 11 * s / 2} y2={y - 2 * s / 2} stroke="rgba(0,0,0,0.15)" strokeWidth="1.2" />
+        <line x1={x - 11.5 * s / 2} y1={y + 6 * s / 2} x2={x + 11.5 * s / 2} y2={y + 6 * s / 2} stroke="rgba(0,0,0,0.12)" strokeWidth="1" />
+        <line x1={x - 12 * s / 2} y1={y + 14 * s / 2} x2={x + 12 * s / 2} y2={y + 14 * s / 2} stroke="rgba(0,0,0,0.1)" strokeWidth="0.8" />
+        <line x1={x - 10.5 * s / 2} y1={y - 6 * s / 2} x2={x + 10.5 * s / 2} y2={y - 6 * s / 2} stroke="rgba(255,255,255,0.08)" strokeWidth="0.8" />
+        {/* Highlight on left side */}
+        <path d={`M${x - 9 * s / 2},${y - 8 * s / 2} L${x - 11 * s / 2},${y + 16 * s / 2} Q${x - 6 * s / 2},${y + 10 * s / 2} ${x - 6 * s / 2},${y - 8 * s / 2} Z`}
+          fill="rgba(255,255,255,0.12)" />
+        {/* Handle — right side */}
+        <path d={`M${x + 10 * s / 2},${y - 4 * s / 2} Q${x + 20 * s / 2},${y} ${x + 18 * s / 2},${y + 10 * s / 2} Q${x + 16 * s / 2},${y + 16 * s / 2} ${x + 11 * s / 2},${y + 12 * s / 2}`}
+          fill="none" stroke="#5a2e0a" strokeWidth="4" strokeLinecap="round" />
+        <path d={`M${x + 10 * s / 2},${y - 4 * s / 2} Q${x + 20 * s / 2},${y} ${x + 18 * s / 2},${y + 10 * s / 2} Q${x + 16 * s / 2},${y + 16 * s / 2} ${x + 11 * s / 2},${y + 12 * s / 2}`}
+          fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1.5" strokeLinecap="round" />
+        {/* Dark interior at top */}
+        <ellipse cx={x} cy={y - 10 * s / 2} rx={10 * s / 2} ry={5 * s / 2} fill="#1a0e05" stroke="#3a1e08" strokeWidth="1.5" />
+        {/* Liquid inside — dark ale */}
+        <ellipse cx={x} cy={y - 9.5 * s / 2} rx={8.5 * s / 2} ry={4 * s / 2} fill="#3a1a08" />
+        {/* Foam on top */}
+        <ellipse cx={x} cy={y - 10 * s / 2} rx={7 * s / 2} ry={2.5 * s / 2} fill="rgba(245,235,200,0.35)" />
+        {/* Rim highlight */}
+        <ellipse cx={x} cy={y - 10 * s / 2} rx={10 * s / 2} ry={5 * s / 2} fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1" />
+        {/* Metal bands */}
+        <path d={`M${x - 11.5 * s / 2},${y + 2 * s / 2} Q${x},${y + 4 * s / 2} ${x + 11.5 * s / 2},${y + 2 * s / 2}`}
+          fill="none" stroke="#9a8a6a" strokeWidth="2.5" />
+        <path d={`M${x - 12 * s / 2},${y + 12 * s / 2} Q${x},${y + 14 * s / 2} ${x + 12 * s / 2},${y + 12 * s / 2}`}
+          fill="none" stroke="#9a8a6a" strokeWidth="2.5" />
+        {/* Band highlights */}
+        <path d={`M${x - 11.5 * s / 2},${y + 2 * s / 2} Q${x},${y + 4 * s / 2} ${x + 11.5 * s / 2},${y + 2 * s / 2}`}
+          fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+      </g>
+    );
+  };
+
+  const renderCigar = (x: number, y: number) => (
+    <g key="cigar" transform={`translate(${x},${y}) rotate(-12)`}>
       {/* Shadow on table */}
-      <ellipse cx={x + 2} cy={y + 22} rx={14} ry={4} fill="rgba(0,0,0,0.3)" />
-      {/* Cup body — tapered trapezoid */}
-      <path d={`M${x - 10},${y - 10} L${x - 12},${y + 18} Q${x},${y + 24} ${x + 12},${y + 18} L${x + 10},${y - 10} Z`}
-        fill="#6b3a10" stroke="#3a1e08" strokeWidth="1.5" />
-      {/* Wood grain lines */}
-      <line x1={x - 11} y1={y} x2={x + 11} y2={y} stroke="rgba(0,0,0,0.15)" strokeWidth="0.8" />
-      <line x1={x - 11.5} y1={y + 8} x2={x + 11.5} y2={y + 8} stroke="rgba(0,0,0,0.12)" strokeWidth="0.8" />
-      <line x1={x - 10.5} y1={y - 5} x2={x + 10.5} y2={y - 5} stroke="rgba(255,255,255,0.08)" strokeWidth="0.6" />
-      {/* Highlight on left side */}
-      <path d={`M${x - 9},${y - 8} L${x - 11},${y + 16} Q${x - 6},${y + 10} ${x - 6},${y - 8} Z`}
-        fill="rgba(255,255,255,0.12)" />
-      {/* Dark interior at top */}
-      <ellipse cx={x} cy={y - 10} rx={10} ry={4} fill="#2a1505" stroke="#3a1e08" strokeWidth="1" />
-      {/* Liquid inside */}
-      <ellipse cx={x} cy={y - 9.5} rx={8} ry={3} fill="#4a2810" />
-      {/* Rim highlight */}
-      <ellipse cx={x} cy={y - 10} rx={10} ry={4} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
-      {/* Metal band around cup */}
-      <path d={`M${x - 11.5},${y + 4} Q${x},${y + 6} ${x + 11.5},${y + 4}`}
-        fill="none" stroke="#8a7a60" strokeWidth="1.5" />
-      <path d={`M${x - 11.5},${y + 4} Q${x},${y + 6} ${x + 11.5},${y + 4}`}
-        fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
+      <ellipse cx="2" cy="6" rx="52" ry="5" fill="rgba(0,0,0,0.25)" />
+      {/* Cigar body — long tapered cylinder */}
+      <rect x="-45" y="-7" width="90" height="14" rx="5" fill="#7a5230" stroke="#4a3018" strokeWidth="1.5" />
+      {/* Darker wrapper texture */}
+      <rect x="-45" y="-7" width="90" height="14" rx="5" fill="url(#cigar-wrap)" />
+      {/* Highlight along top edge */}
+      <rect x="-44" y="-6.5" width="88" height="4" rx="3" fill="rgba(255,255,255,0.12)" />
+      {/* Shadow along bottom */}
+      <rect x="-44" y="3" width="88" height="4" rx="3" fill="rgba(0,0,0,0.15)" />
+      {/* Band — gold ring near the end you hold */}
+      <rect x="-30" y="-8.5" width="14" height="17" rx="3" fill="#c8960c" stroke="#8a6a08" strokeWidth="1" />
+      <rect x="-30" y="-8.5" width="14" height="4" rx="3" fill="rgba(255,255,255,0.2)" />
+      <rect x="-28" y="-5" width="10" height="11" rx="2" fill="none" stroke="#ffd700" strokeWidth="0.8" />
+      {/* Ash tip — right end */}
+      <rect x="40" y="-6" width="12" height="12" rx="4" fill="#b0a898" stroke="#888" strokeWidth="0.8" />
+      <rect x="40" y="-6" width="12" height="3" rx="2" fill="rgba(255,255,255,0.2)" />
+      {/* Ember glow at tip */}
+      <rect x="48" y="-4.5" width="6" height="9" rx="3" fill="#e65c00" opacity="0.7" />
+      <rect x="49" y="-3" width="4" height="6" rx="2" fill="#ff8c00" opacity="0.5" />
+      {/* Smoke wisps — rising from the lit end */}
+      <path d="M54,-6 Q58,-18 52,-28 Q48,-36 54,-48" fill="none" stroke="rgba(180,180,180,0.3)" strokeWidth="2.5" strokeLinecap="round" />
+      <path d="M52,-4 Q60,-14 55,-24 Q50,-32 58,-44 Q64,-52 58,-62" fill="none" stroke="rgba(160,160,160,0.2)" strokeWidth="2" strokeLinecap="round" />
+      <path d="M56,-8 Q62,-20 58,-32 Q54,-40 60,-52" fill="none" stroke="rgba(200,200,200,0.15)" strokeWidth="3" strokeLinecap="round" />
     </g>
   );
 
@@ -2093,9 +2146,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         elements.push(renderTableRoad(player.color, corner.x + 20 + col * 36, roadY + row * 18, idx * 100 + 20 + i));
       }
 
-      // Wooden cup next to Hildeguard (player 1 — blue)
+      // Hildeguard's personal items — wooden mug and cigar
       if (idx === 1) {
-        elements.push(renderWoodenCup(corner.x + 185, corner.y + 55));
+        elements.push(renderWoodenCup(corner.x + 200, corner.y + 45));
+        elements.push(renderCigar(corner.x + 135, corner.y + 130));
       }
 
       return <g key={`pile-${idx}`}>{elements}</g>;
@@ -2220,17 +2274,49 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             }}
             onMouseLeave={handlePanEnd}
             onTouchStart={e => {
-              if (e.touches.length === 1) {
+              if (e.touches.length === 2) {
+                // Start pinch zoom
+                const dx = e.touches[1].clientX - e.touches[0].clientX;
+                const dy = e.touches[1].clientY - e.touches[0].clientY;
+                pinchStartDist.current = Math.sqrt(dx * dx + dy * dy);
+                pinchStartVB.current = { ...viewBox };
+                const rect = svgRef.current?.getBoundingClientRect();
+                if (rect) {
+                  pinchMidRef.current = {
+                    x: ((e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left) / rect.width,
+                    y: ((e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top) / rect.height,
+                  };
+                }
+                setIsPanning(false); // cancel any pan
+                e.preventDefault();
+              } else if (e.touches.length === 1) {
                 handlePanStart(e.touches[0].clientX, e.touches[0].clientY);
               }
             }}
             onTouchMove={e => {
-              if (e.touches.length === 1) {
+              if (e.touches.length === 2 && pinchStartDist.current > 0) {
+                // Pinch zoom
+                const dx = e.touches[1].clientX - e.touches[0].clientX;
+                const dy = e.touches[1].clientY - e.touches[0].clientY;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const scale = pinchStartDist.current / dist; // >1 = zoom out, <1 = zoom in
+                const svb = pinchStartVB.current;
+                const newW = Math.max(MIN_VB_SIZE, Math.min(MAX_VB_SIZE, svb.w * scale));
+                const newH = Math.max(MIN_VB_SIZE, Math.min(MAX_VB_SIZE, svb.h * scale));
+                const mx = pinchMidRef.current.x, my = pinchMidRef.current.y;
+                const newX = Math.max(TABLE_VB.x, Math.min(TABLE_VB.x + TABLE_VB.w - newW, svb.x + (svb.w - newW) * mx));
+                const newY = Math.max(TABLE_VB.y, Math.min(TABLE_VB.y + TABLE_VB.h - newH, svb.y + (svb.h - newH) * my));
+                setViewBox({ x: newX, y: newY, w: newW, h: newH });
+                e.preventDefault();
+              } else if (e.touches.length === 1) {
                 handlePanMove(e.touches[0].clientX, e.touches[0].clientY);
                 e.preventDefault();
               }
             }}
-            onTouchEnd={handlePanEnd}
+            onTouchEnd={e => {
+              if (e.touches.length < 2) pinchStartDist.current = 0;
+              handlePanEnd();
+            }}
             onWheel={handleZoom}
             onClick={() => {
               if (panMoved.current) return; // was a drag, not a click
