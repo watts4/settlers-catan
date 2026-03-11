@@ -2089,8 +2089,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     const s = 10.5; // scale factor — 3x human-sized
     return (
       <g key="wooden-cup">
-        {/* Shadow on table */}
-        <ellipse cx={x + 3} cy={y + 22 * s / 2 + 8} rx={14 * s / 2} ry={5 * s / 2} fill="rgba(0,0,0,0.35)" />
         {/* Cup body — tapered */}
         <path d={`M${x - 10 * s / 2},${y - 10 * s / 2} L${x - 12 * s / 2},${y + 18 * s / 2} Q${x},${y + 24 * s / 2} ${x + 12 * s / 2},${y + 18 * s / 2} L${x + 10 * s / 2},${y - 10 * s / 2} Z`}
           fill="#6b3a10" stroke="#3a1e08" strokeWidth="2" />
@@ -2224,26 +2222,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     );
   };
 
-  const renderCoin = (x: number, y: number, angle: number, idx: number) => (
-    <g key={`coin-${idx}`} transform={`translate(${x},${y}) rotate(${angle})`}>
-      {/* Shadow */}
-      <ellipse cx="1.5" cy="2" rx="10" ry="3.5" fill="rgba(0,0,0,0.2)" />
-      {/* Coin edge (thickness) */}
-      <ellipse cx="0" cy="1.5" rx="9" ry="3" fill="#5a5a5a" stroke="#3a3a3a" strokeWidth="0.5" />
-      {/* Coin face */}
-      <ellipse cx="0" cy="0" rx="9" ry="3" fill="#7a7a78" stroke="#5a5a58" strokeWidth="1" />
-      {/* Tarnish/patina */}
-      <ellipse cx="-1" cy="-0.3" rx="6" ry="2" fill="rgba(90,100,85,0.3)" />
-      {/* Worn stamp/design — simple cross */}
-      <line x1="-3" y1="0" x2="3" y2="0" stroke="rgba(100,100,95,0.4)" strokeWidth="0.8" />
-      <line x1="0" y1="-1.2" x2="0" y2="1.2" stroke="rgba(100,100,95,0.4)" strokeWidth="0.8" />
-      {/* Highlight edge */}
-      <ellipse cx="0" cy="0" rx="9" ry="3" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
-      {/* Rim highlight */}
-      <path d="M-8,-1.5 Q0,-3.5 8,-1.5" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="0.6" />
-    </g>
-  );
-
   const renderPiecePiles = () =>
     game.players.map((player, idx) => {
       const corner = PILE_CORNERS[idx];
@@ -2280,22 +2258,13 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
       // Hildeguard's personal items — wooden mug and cigar
       if (idx === 1) {
-        elements.push(renderWoodenCup(corner.x - 140, corner.y + 40));
+        elements.push(renderWoodenCup(corner.x - 140, corner.y + 15));
         elements.push(renderCigar(corner.x - 200, corner.y + 120));
       }
 
-      // Steve's area — a few old coins scattered
-      if (idx === 2) {
-        elements.push(renderCoin(corner.x + 185, corner.y + 35, 12, idx * 100 + 50));
-        elements.push(renderCoin(corner.x + 175, corner.y + 70, -20, idx * 100 + 51));
-        elements.push(renderCoin(corner.x + 200, corner.y + 90, 8, idx * 100 + 52));
-      }
-
-      // Tammy's area — polaroid and a couple coins
+      // Tammy's polaroid of her black cat
       if (idx === 3) {
         elements.push(renderPolaroid(corner.x + 200, corner.y + 40));
-        elements.push(renderCoin(corner.x + 180, corner.y + 120, -15, idx * 100 + 50));
-        elements.push(renderCoin(corner.x + 210, corner.y + 135, 25, idx * 100 + 51));
       }
 
       return <g key={`pile-${idx}`}>{elements}</g>;
