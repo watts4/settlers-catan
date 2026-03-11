@@ -4,7 +4,7 @@ import type { GameState, Player, Resource, Hex, Vertex, Edge } from './types';
 import { generateBoard, hexCenterPx, HEX_SIZE } from './board';
 
 const PLAYER_COLORS = ['#e74c3c', '#3498db', '#ecf0f1', '#e67e22']; // red, blue, white (or light gray), orange
-const PLAYER_NAMES = ['Player 1', 'Hildeguard', 'Steve', 'Tammy'];
+const PLAYER_NAMES = ['You', 'Hildeguard', 'Steve', 'Tammy'];
 
 const DEV_CARDS = [
   'knight', 'knight', 'knight', 'knight', 'knight', 'knight', 'knight', 'knight', 'knight',
