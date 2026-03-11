@@ -314,9 +314,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [humanDiscardPending, setHumanDiscardPending] = useState<{ toDiscard: number } | null>(null);
   const [discardSelection, setDiscardSelection] = useState<Partial<Record<Resource, number>>>({});
 
-  // ── Board pan state ────────────────────────────────────────────────────────
-  const DEFAULT_VB = { x: -340, y: -340, w: 680, h: 680 }; // initial view — zoomed to hex grid
-  const TABLE_VB = { x: -560, y: -560, w: 1120, h: 1120 }; // full table bounds
+  // ── Board pan/zoom state ─────────────────────────────────────────────────
+  const DEFAULT_VB = { x: -310, y: -310, w: 620, h: 620 }; // initial view — tight on hex grid
+  const TABLE_VB = { x: -620, y: -620, w: 1240, h: 1240 }; // full table bounds
+  const MIN_VB_SIZE = 300; // max zoom in
+  const MAX_VB_SIZE = TABLE_VB.w; // max zoom out = full table
   const [viewBox, setViewBox] = useState(DEFAULT_VB);
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0, vbx: 0, vby: 0 });
@@ -1517,6 +1519,26 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setIsPanning(false);
   }, []);
 
+  const handleZoom = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    if (!svgRef.current) return;
+    const zoomFactor = e.deltaY > 0 ? 1.08 : 0.92; // scroll down = zoom out
+    setViewBox(vb => {
+      const newW = Math.max(MIN_VB_SIZE, Math.min(MAX_VB_SIZE, vb.w * zoomFactor));
+      const newH = Math.max(MIN_VB_SIZE, Math.min(MAX_VB_SIZE, vb.h * zoomFactor));
+      // Zoom toward cursor position
+      const rect = svgRef.current!.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) / rect.width;  // 0..1 mouse position
+      const my = (e.clientY - rect.top) / rect.height;
+      const newX = vb.x + (vb.w - newW) * mx;
+      const newY = vb.y + (vb.h - newH) * my;
+      // Clamp to table bounds
+      const clampedX = Math.max(TABLE_VB.x, Math.min(TABLE_VB.x + TABLE_VB.w - newW, newX));
+      const clampedY = Math.max(TABLE_VB.y, Math.min(TABLE_VB.y + TABLE_VB.h - newH, newY));
+      return { x: clampedX, y: clampedY, w: newW, h: newH };
+    });
+  }, []);
+
   // ── Rendering ────────────────────────────────────────────────────────────────
 
   const renderBoardDefs = () => (
@@ -1918,67 +1940,124 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
   // ── Piece piles around the table ──────────────────────────────────────────
   const PILE_CORNERS = [
-    { x: -460, y: -460 }, // Player 0 (red) — top-left
-    { x: 340, y: -460 },  // Player 1 (blue) — top-right
-    { x: -460, y: 360 },  // Player 2 (white) — bottom-left
-    { x: 340, y: 360 },   // Player 3 (orange) — bottom-right
+    { x: -520, y: -520 }, // Player 0 (red) — top-left
+    { x: 340, y: -520 },  // Player 1 (blue) — top-right
+    { x: -520, y: 370 },  // Player 2 (white) — bottom-left
+    { x: 340, y: 370 },   // Player 3 (orange) — bottom-right
   ];
 
-  const renderMiniSettlement = (color: string, x: number, y: number, idx: number) => {
-    const s = 0.9;
-    const bw = 14 * s, bh = 9 * s;
+  const renderTableSettlement = (color: string, x: number, y: number, idx: number) => {
+    // Same realistic style as on-board settlements, at 1.2x scale
+    const size = 1.2;
+    const bw = 20 * size, bh = 13 * size;
     const bx = x - bw / 2, by = y - bh / 2;
-    const roofPeak = by - 8 * s;
-    const oh = 2 * s;
-    const id = `ms-${idx}`;
+    const roofPeak = by - 11 * size;
+    const roofOverhang = 3 * size;
+    const wGradId = `tw-${idx}`, rGradId = `tr-${idx}`;
     return (
-      <g key={id}>
-        <rect x={bx - 0.5} y={by + bh - 1} width={bw + 1} height={2} rx={0.5} fill="rgba(0,0,0,0.3)" />
-        <rect x={bx} y={by} width={bw} height={bh} rx={1} fill={color} stroke="#000" strokeWidth="1.2" />
-        <rect x={bx} y={by} width={bw} height={1.5} fill="rgba(255,255,255,0.2)" />
-        <polygon points={`${bx - oh},${by} ${x},${roofPeak} ${bx + bw + oh},${by}`}
-          fill={color} stroke="#000" strokeWidth="1.2" strokeLinejoin="round" />
-        <polygon points={`${bx - oh},${by} ${x},${roofPeak} ${x},${by}`}
-          fill="rgba(255,255,255,0.18)" />
-        <polygon points={`${x},${roofPeak} ${bx + bw + oh},${by} ${x},${by}`}
-          fill="rgba(0,0,0,0.15)" />
+      <g key={`ts-${idx}`} filter="url(#building-shadow)">
+        <defs>
+          <linearGradient id={wGradId} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor={color} /><stop offset="100%" stopColor="rgba(0,0,0,0.25)" />
+          </linearGradient>
+          <linearGradient id={rGradId} x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor={color} /><stop offset="100%" stopColor="rgba(0,0,0,0.3)" />
+          </linearGradient>
+        </defs>
+        <rect x={bx - 1} y={by + bh - 1} width={bw + 2} height={3 * size} rx={1} fill="rgba(0,0,0,0.35)" />
+        <rect x={bx} y={by} width={bw} height={bh} rx={1.2} fill={`url(#${wGradId})`} stroke="#000" strokeWidth="1.8" />
+        <line x1={bx + 2} y1={by + 3 * size} x2={bx + bw - 2} y2={by + 3 * size} stroke="rgba(0,0,0,0.12)" strokeWidth="0.6" />
+        <line x1={bx + 2} y1={by + 7 * size} x2={bx + bw - 2} y2={by + 7 * size} stroke="rgba(0,0,0,0.12)" strokeWidth="0.6" />
+        <rect x={bx + 0.5} y={by + 0.5} width={bw - 1} height={2.5} rx={1} fill="rgba(255,255,255,0.25)" />
+        <rect x={bx} y={by + bh - 3} width={bw} height={3} fill="rgba(0,0,0,0.2)" />
+        <rect x={x - 3 * size} y={by + bh - 7 * size} width={6 * size} height={7 * size} rx={0.8} fill="rgba(0,0,0,0.3)" />
+        <polygon points={`${bx - roofOverhang},${by} ${x},${roofPeak} ${bx + bw + roofOverhang},${by}`}
+          fill={`url(#${rGradId})`} stroke="#000" strokeWidth="1.8" strokeLinejoin="round" />
+        <polygon points={`${bx - roofOverhang},${by} ${x},${roofPeak} ${x},${by}`} fill="rgba(255,255,255,0.2)" />
+        <polygon points={`${x},${roofPeak} ${bx + bw + roofOverhang},${by} ${x},${by}`} fill="rgba(0,0,0,0.15)" />
+        <line x1={x} y1={roofPeak} x2={x} y2={by} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+        <rect x={x + 4 * size} y={roofPeak + 3 * size} width={3 * size} height={5 * size} fill={color} stroke="#000" strokeWidth="1" />
       </g>
     );
   };
 
-  const renderMiniCity = (color: string, x: number, y: number, idx: number) => {
-    const wx = x - 10, wy = y - 5, ww = 20, wh = 12;
-    const mw = 4, mh = 5;
-    const mPositions = [wx + 1, wx + 8, wx + 15];
+  const renderTableCity = (color: string, x: number, y: number, idx: number) => {
+    const wx = x - 14, wy = y - 7, ww = 28, wh = 16;
+    const mw = 6, mh = 7;
+    const mPositions = [wx + 2, wx + 11, wx + 20];
     return (
-      <g key={`mc-${idx}`}>
-        <rect x={wx - 0.5} y={wy + wh - 1} width={ww + 1} height={2} rx={0.5} fill="rgba(0,0,0,0.3)" />
-        <rect x={wx} y={wy} width={ww} height={wh} fill={color} stroke="#000" strokeWidth="1.2" />
-        <rect x={wx} y={wy} width={ww} height={2} fill="rgba(255,255,255,0.2)" />
-        <rect x={wx} y={wy + wh - 3} width={ww} height={3} fill="rgba(0,0,0,0.25)" />
+      <g key={`tc-${idx}`} filter="url(#building-shadow)">
+        <rect x={wx - 1} y={wy + wh - 1} width={ww + 2} height={3} rx={1} fill="rgba(0,0,0,0.35)" />
+        <rect x={wx} y={wy} width={ww} height={wh} fill={color} stroke="#000" strokeWidth="1.5" />
+        <rect x={wx} y={wy} width={ww} height={3} fill="rgba(255,255,255,0.25)" />
+        <rect x={wx} y={wy + wh - 4} width={ww} height={4} fill="rgba(0,0,0,0.3)" />
         {mPositions.map((mx, i) => (
           <g key={i}>
-            <rect x={mx} y={wy - mh} width={mw} height={mh} fill={color} stroke="#000" strokeWidth="1" />
-            <rect x={mx} y={wy - mh} width={mw} height={1.5} fill="rgba(255,255,255,0.25)" />
+            <rect x={mx} y={wy - mh} width={mw} height={mh} fill={color} stroke="#000" strokeWidth="1.2" />
+            <rect x={mx} y={wy - mh} width={mw} height={2} fill="rgba(255,255,255,0.3)" />
           </g>
         ))}
+        <rect x={x - 1.5} y={wy + 3} width={3} height={6} fill="rgba(0,0,0,0.45)" />
       </g>
     );
   };
 
-  const renderMiniRoad = (color: string, x: number, y: number, idx: number) => {
-    const len = 18, hw = 3;
+  const renderTableRoad = (color: string, x: number, y: number, idx: number) => {
+    // 3D plank style matching on-board roads
+    const len = 28, hw = 4, t = 2.5;
+    const gradId = `trd-${idx}`;
     return (
-      <g key={`mr-${idx}`}>
+      <g key={`trd-${idx}`} filter="url(#building-shadow)">
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} /><stop offset="100%" stopColor={color} stopOpacity="0.7" />
+          </linearGradient>
+        </defs>
+        {/* Side face for 3D depth */}
+        <rect x={x - len / 2} y={y + hw} width={len} height={t}
+          rx={1} fill="rgba(0,0,0,0.35)" stroke="#000" strokeWidth="0.5" />
+        {/* Top face */}
         <rect x={x - len / 2} y={y - hw} width={len} height={hw * 2}
-          rx={1.5} fill={color} stroke="#000" strokeWidth="1" />
-        <rect x={x - len / 2} y={y - hw} width={len} height={1.5}
-          rx={1.5} fill="rgba(255,255,255,0.2)" />
-        <rect x={x - len / 2} y={y + hw - 1.5} width={len} height={1.5}
-          rx={1.5} fill="rgba(0,0,0,0.2)" />
+          rx={1.5} fill={`url(#${gradId})`} stroke="#000" strokeWidth="1.2" />
+        {/* Wood grain */}
+        <line x1={x - len / 2 + 2} y1={y - 1} x2={x + len / 2 - 2} y2={y - 1}
+          stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+        <line x1={x - len / 2 + 2} y1={y + 2} x2={x + len / 2 - 2} y2={y + 2}
+          stroke="rgba(0,0,0,0.12)" strokeWidth="0.8" />
+        {/* Top highlight */}
+        <rect x={x - len / 2} y={y - hw} width={len} height={1.8}
+          rx={1.5} fill="rgba(255,255,255,0.22)" />
       </g>
     );
   };
+
+  const renderWoodenCup = (x: number, y: number) => (
+    <g key="wooden-cup">
+      {/* Shadow on table */}
+      <ellipse cx={x + 2} cy={y + 22} rx={14} ry={4} fill="rgba(0,0,0,0.3)" />
+      {/* Cup body — tapered trapezoid */}
+      <path d={`M${x - 10},${y - 10} L${x - 12},${y + 18} Q${x},${y + 24} ${x + 12},${y + 18} L${x + 10},${y - 10} Z`}
+        fill="#6b3a10" stroke="#3a1e08" strokeWidth="1.5" />
+      {/* Wood grain lines */}
+      <line x1={x - 11} y1={y} x2={x + 11} y2={y} stroke="rgba(0,0,0,0.15)" strokeWidth="0.8" />
+      <line x1={x - 11.5} y1={y + 8} x2={x + 11.5} y2={y + 8} stroke="rgba(0,0,0,0.12)" strokeWidth="0.8" />
+      <line x1={x - 10.5} y1={y - 5} x2={x + 10.5} y2={y - 5} stroke="rgba(255,255,255,0.08)" strokeWidth="0.6" />
+      {/* Highlight on left side */}
+      <path d={`M${x - 9},${y - 8} L${x - 11},${y + 16} Q${x - 6},${y + 10} ${x - 6},${y - 8} Z`}
+        fill="rgba(255,255,255,0.12)" />
+      {/* Dark interior at top */}
+      <ellipse cx={x} cy={y - 10} rx={10} ry={4} fill="#2a1505" stroke="#3a1e08" strokeWidth="1" />
+      {/* Liquid inside */}
+      <ellipse cx={x} cy={y - 9.5} rx={8} ry={3} fill="#4a2810" />
+      {/* Rim highlight */}
+      <ellipse cx={x} cy={y - 10} rx={10} ry={4} fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+      {/* Metal band around cup */}
+      <path d={`M${x - 11.5},${y + 4} Q${x},${y + 6} ${x + 11.5},${y + 4}`}
+        fill="none" stroke="#8a7a60" strokeWidth="1.5" />
+      <path d={`M${x - 11.5},${y + 4} Q${x},${y + 6} ${x + 11.5},${y + 4}`}
+        fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="0.5" />
+    </g>
+  );
 
   const renderPiecePiles = () =>
     game.players.map((player, idx) => {
@@ -1987,52 +2066,37 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
       // Player label
       elements.push(
-        <text key={`label-${idx}`} x={corner.x + 60} y={corner.y + 10}
-          fill={player.color} fontSize="13" fontWeight="bold" textAnchor="middle"
-          stroke="rgba(0,0,0,0.6)" strokeWidth="3" paintOrder="stroke">
+        <text key={`label-${idx}`} x={corner.x + 80} y={corner.y + 12}
+          fill={player.color} fontSize="16" fontWeight="bold" textAnchor="middle"
+          stroke="rgba(0,0,0,0.7)" strokeWidth="3.5" paintOrder="stroke">
           {player.name}
         </text>
       );
 
       // Settlements — row below label
-      const settY = corner.y + 32;
+      const settY = corner.y + 40;
       for (let i = 0; i < player.pieces.settlements; i++) {
-        elements.push(renderMiniSettlement(player.color, corner.x + 14 + i * 26, settY, idx * 100 + i));
+        elements.push(renderTableSettlement(player.color, corner.x + 20 + i * 34, settY, idx * 100 + i));
       }
-      // Label for settlements
-      elements.push(
-        <text key={`sl-${idx}`} x={corner.x + 14 + player.pieces.settlements * 26 + 4} y={settY + 4}
-          fill="#aaa" fontSize="9" fontWeight="600">
-          {player.pieces.settlements > 0 ? `×${player.pieces.settlements}` : ''}
-        </text>
-      );
 
       // Cities — row below settlements
-      const cityY = settY + 30;
+      const cityY = settY + 42;
       for (let i = 0; i < player.pieces.cities; i++) {
-        elements.push(renderMiniCity(player.color, corner.x + 14 + i * 28, cityY, idx * 100 + 10 + i));
+        elements.push(renderTableCity(player.color, corner.x + 20 + i * 38, cityY, idx * 100 + 10 + i));
       }
-      elements.push(
-        <text key={`cl-${idx}`} x={corner.x + 14 + player.pieces.cities * 28 + 4} y={cityY + 4}
-          fill="#aaa" fontSize="9" fontWeight="600">
-          {player.pieces.cities > 0 ? `×${player.pieces.cities}` : ''}
-        </text>
-      );
 
-      // Roads — rows below cities (5 per row)
-      const roadY = cityY + 28;
+      // Roads — rows below cities (4 per row)
+      const roadY = cityY + 40;
       for (let i = 0; i < player.pieces.roads; i++) {
-        const row = Math.floor(i / 5);
-        const col = i % 5;
-        elements.push(renderMiniRoad(player.color, corner.x + 14 + col * 22, roadY + row * 12, idx * 100 + 20 + i));
+        const row = Math.floor(i / 4);
+        const col = i % 4;
+        elements.push(renderTableRoad(player.color, corner.x + 20 + col * 36, roadY + row * 18, idx * 100 + 20 + i));
       }
-      elements.push(
-        <text key={`rl-${idx}`} x={corner.x + 14 + Math.min(player.pieces.roads, 5) * 22 + 4}
-          y={roadY + 4}
-          fill="#aaa" fontSize="9" fontWeight="600">
-          {player.pieces.roads > 0 ? `×${player.pieces.roads}` : ''}
-        </text>
-      );
+
+      // Wooden cup next to Hildeguard (player 1 — blue)
+      if (idx === 1) {
+        elements.push(renderWoodenCup(corner.x + 185, corner.y + 55));
+      }
 
       return <g key={`pile-${idx}`}>{elements}</g>;
     });
@@ -2120,7 +2184,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       <div className="game-area">
         <div className="board-container">
           {/* Recenter button */}
-          {(viewBox.x !== DEFAULT_VB.x || viewBox.y !== DEFAULT_VB.y) && (
+          {(viewBox.x !== DEFAULT_VB.x || viewBox.y !== DEFAULT_VB.y || viewBox.w !== DEFAULT_VB.w) && (
             <button
               onClick={() => setViewBox(DEFAULT_VB)}
               title="Recenter board"
@@ -2138,7 +2202,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             ref={svgRef}
             viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
             className="board"
-            width="680" height="680"
+            width="740" height="740"
             style={{
               fontFamily: "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif",
               cursor: isPanning ? 'grabbing' : 'grab',
@@ -2167,6 +2231,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               }
             }}
             onTouchEnd={handlePanEnd}
+            onWheel={handleZoom}
             onClick={() => {
               if (panMoved.current) return; // was a drag, not a click
               if (buildingMode && roadBuildingRoadsLeft === 0) {
