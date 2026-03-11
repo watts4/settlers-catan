@@ -1764,18 +1764,46 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       Object.entries(edge.roads).filter(([, t]) => t).map(([pid]) => {
         const p = game.players[parseInt(pid)];
         const x1 = edge.x1, y1 = edge.y1, x2 = edge.x2, y2 = edge.y2;
+        const roadGradId = `road-${edge.id}-${pid}`;
+        // Calculate road angle for perpendicular offset (3D thickness)
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        // Perpendicular unit vector (for width offset)
+        const px = -dy / len, py = dx / len;
+        const w = 5; // half-width of road plank
+        const t = 2; // 3D thickness offset
+        // Four corners of the road plank (top face)
+        const topFace = `${x1 + px * w},${y1 + py * w} ${x2 + px * w},${y2 + py * w} ${x2 - px * w},${y2 - py * w} ${x1 - px * w},${y1 - py * w}`;
+        // Side face (3D depth) — offset downward-right for perspective
+        const sideFace = `${x1 - px * w},${y1 - py * w} ${x2 - px * w},${y2 - py * w} ${x2 - px * w + t},${y2 - py * w + t} ${x1 - px * w + t},${y1 - py * w + t}`;
+        // Bottom edge face
+        const bottomFace = `${x2 - px * w},${y2 - py * w} ${x2 + px * w},${y2 + py * w} ${x2 + px * w + t},${y2 + py * w + t} ${x2 - px * w + t},${y2 - py * w + t}`;
         return (
-          <g key={`${edge.id}-${pid}`}>
-            {/* Dark border for depth */}
-            <line x1={x1} y1={y1} x2={x2} y2={y2}
-              stroke="rgba(0,0,0,0.55)" strokeWidth="11" strokeLinecap="round" />
-            {/* Main road color */}
-            <line x1={x1} y1={y1} x2={x2} y2={y2}
-              stroke={p.color} strokeWidth="8" strokeLinecap="round" />
-            {/* Dashed highlight — gives a plank/cobblestone texture */}
-            <line x1={x1} y1={y1} x2={x2} y2={y2}
-              stroke="rgba(255,255,255,0.22)" strokeWidth="3"
-              strokeLinecap="round" strokeDasharray="5 7" />
+          <g key={`${edge.id}-${pid}`} filter="url(#building-shadow)">
+            <defs>
+              <linearGradient id={roadGradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={p.color} stopOpacity="1" />
+                <stop offset="100%" stopColor={p.color} stopOpacity="0.7" />
+              </linearGradient>
+            </defs>
+            {/* Side face — darker for 3D depth */}
+            <polygon points={sideFace}
+              fill="rgba(0,0,0,0.4)" stroke="#000" strokeWidth="0.5" />
+            {/* Bottom edge face */}
+            <polygon points={bottomFace}
+              fill="rgba(0,0,0,0.3)" stroke="#000" strokeWidth="0.5" />
+            {/* Top face — main road plank */}
+            <polygon points={topFace}
+              fill={`url(#${roadGradId})`} stroke="#000" strokeWidth="1.5"
+              strokeLinejoin="round" />
+            {/* Wood grain lines along the plank */}
+            <line x1={x1 + px * 2} y1={y1 + py * 2} x2={x2 + px * 2} y2={y2 + py * 2}
+              stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" />
+            <line x1={x1 - px * 2} y1={y1 - py * 2} x2={x2 - px * 2} y2={y2 - py * 2}
+              stroke="rgba(0,0,0,0.15)" strokeWidth="0.8" />
+            {/* Highlight edge — top/left lit side */}
+            <line x1={x1 + px * w} y1={y1 + py * w} x2={x2 + px * w} y2={y2 + py * w}
+              stroke="rgba(255,255,255,0.25)" strokeWidth="1" strokeLinecap="round" />
           </g>
         );
       })
@@ -1896,21 +1924,21 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             ref={el => { playerCardRefs.current[player.id] = el; }}
             className={`player-card ${player.id === game.currentPlayer ? 'active' : ''}`}
             style={{ '--player-color': player.color } as React.CSSProperties}>
-            <div className="player-name" style={{ color: player.color, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              {player.name}
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', marginLeft: '2px' }} title={`Victory Points: ${getDisplayVP(player)}`}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ verticalAlign: 'middle' }}>
+            <div className="player-name" style={{ color: player.color, display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{player.name}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', flexShrink: 0 }} title={`Victory Points: ${getDisplayVP(player)}`}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
                   <path d="M12 2L9 8.5H3L7.5 12.5L5.5 19L12 15L18.5 19L16.5 12.5L21 8.5H15L12 2Z" fill="#ffd700" stroke="#b8960c" strokeWidth="1"/>
                   <path d="M7 20H17V22H7V20Z" fill="#ffd700" stroke="#b8960c" strokeWidth="0.5"/>
                   <path d="M5 22H19V23H5V22Z" fill="#daa520"/>
                 </svg>
-                <span style={{ color: '#ffd700', fontWeight: 800, fontSize: '0.85rem', textShadow: '0 0 6px rgba(255,215,0,0.3)' }}>{getDisplayVP(player)}</span>
+                <span style={{ color: '#ffd700', fontWeight: 800, fontSize: '0.8rem', textShadow: '0 0 6px rgba(255,215,0,0.3)' }}>{getDisplayVP(player)}</span>
               </span>
               {game.longestRoadHolder === player.id && (
-                <span style={{ fontSize: '0.75em' }} title="Longest Road">🛣️</span>
+                <span style={{ fontSize: '0.7em', flexShrink: 0 }} title="Longest Road">🛣️</span>
               )}
               {game.largestArmyHolder === player.id && (
-                <span style={{ fontSize: '0.75em' }} title="Largest Army">⚔️</span>
+                <span style={{ fontSize: '0.7em', flexShrink: 0 }} title="Largest Army">⚔️</span>
               )}
             </div>
             <div className="player-stats">
