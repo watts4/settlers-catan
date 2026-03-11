@@ -313,6 +313,15 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   // Discard UI state — shown when a 7 is rolled and human has 8+ cards
   const [humanDiscardPending, setHumanDiscardPending] = useState<{ toDiscard: number } | null>(null);
   const [discardSelection, setDiscardSelection] = useState<Partial<Record<Resource, number>>>({});
+
+  // ── Board pan state ────────────────────────────────────────────────────────
+  const DEFAULT_VB = { x: -340, y: -340, w: 680, h: 680 }; // initial view — zoomed to hex grid
+  const TABLE_VB = { x: -560, y: -560, w: 1120, h: 1120 }; // full table bounds
+  const [viewBox, setViewBox] = useState(DEFAULT_VB);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef({ x: 0, y: 0, vbx: 0, vby: 0 });
+  const panMoved = useRef(false);
+  const svgRef = useRef<SVGSVGElement>(null);
   const afterHumanDiscardRef = useRef<((s: GameState) => GameState) | null>(null);
 
   // ── Multiplayer sync ────────────────────────────────────────────────────────
@@ -1485,6 +1494,29 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setBuildingMode(null);
   };
 
+  // ── Board pan handlers ─────────────────────────────────────────────────────
+
+  const handlePanStart = useCallback((clientX: number, clientY: number) => {
+    panStartRef.current = { x: clientX, y: clientY, vbx: viewBox.x, vby: viewBox.y };
+    panMoved.current = false;
+    setIsPanning(true);
+  }, [viewBox.x, viewBox.y]);
+
+  const handlePanMove = useCallback((clientX: number, clientY: number) => {
+    if (!isPanning || !svgRef.current) return;
+    const dx = clientX - panStartRef.current.x;
+    const dy = clientY - panStartRef.current.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) panMoved.current = true;
+    const scale = viewBox.w / svgRef.current.clientWidth;
+    const newX = Math.max(TABLE_VB.x, Math.min(TABLE_VB.x + TABLE_VB.w - viewBox.w, panStartRef.current.vbx - dx * scale));
+    const newY = Math.max(TABLE_VB.y, Math.min(TABLE_VB.y + TABLE_VB.h - viewBox.h, panStartRef.current.vby - dy * scale));
+    setViewBox(vb => ({ ...vb, x: newX, y: newY }));
+  }, [isPanning, viewBox.w]);
+
+  const handlePanEnd = useCallback(() => {
+    setIsPanning(false);
+  }, []);
+
   // ── Rendering ────────────────────────────────────────────────────────────────
 
   const renderBoardDefs = () => (
@@ -1539,6 +1571,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       <radialGradient id="hex-vignette" cx="50%" cy="50%" r="75%">
         <stop offset="20%" stopColor="rgba(255,255,255,0.1)" />
         <stop offset="100%" stopColor="rgba(0,0,0,0.38)" />
+      </radialGradient>
+      {/* Table surface — darker wood surrounding the board */}
+      <radialGradient id="table-surface" cx="50%" cy="50%" r="70%">
+        <stop offset="0%" stopColor="#5a3a1a" />
+        <stop offset="60%" stopColor="#4a2c10" />
+        <stop offset="100%" stopColor="#3a1e08" />
       </radialGradient>
     </defs>
   );
@@ -1878,6 +1916,127 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
   const getDisplayVP = (p: typeof currentPlayer) => calculateVP(p, game);
 
+  // ── Piece piles around the table ──────────────────────────────────────────
+  const PILE_CORNERS = [
+    { x: -460, y: -460 }, // Player 0 (red) — top-left
+    { x: 340, y: -460 },  // Player 1 (blue) — top-right
+    { x: -460, y: 360 },  // Player 2 (white) — bottom-left
+    { x: 340, y: 360 },   // Player 3 (orange) — bottom-right
+  ];
+
+  const renderMiniSettlement = (color: string, x: number, y: number, idx: number) => {
+    const s = 0.9;
+    const bw = 14 * s, bh = 9 * s;
+    const bx = x - bw / 2, by = y - bh / 2;
+    const roofPeak = by - 8 * s;
+    const oh = 2 * s;
+    const id = `ms-${idx}`;
+    return (
+      <g key={id}>
+        <rect x={bx - 0.5} y={by + bh - 1} width={bw + 1} height={2} rx={0.5} fill="rgba(0,0,0,0.3)" />
+        <rect x={bx} y={by} width={bw} height={bh} rx={1} fill={color} stroke="#000" strokeWidth="1.2" />
+        <rect x={bx} y={by} width={bw} height={1.5} fill="rgba(255,255,255,0.2)" />
+        <polygon points={`${bx - oh},${by} ${x},${roofPeak} ${bx + bw + oh},${by}`}
+          fill={color} stroke="#000" strokeWidth="1.2" strokeLinejoin="round" />
+        <polygon points={`${bx - oh},${by} ${x},${roofPeak} ${x},${by}`}
+          fill="rgba(255,255,255,0.18)" />
+        <polygon points={`${x},${roofPeak} ${bx + bw + oh},${by} ${x},${by}`}
+          fill="rgba(0,0,0,0.15)" />
+      </g>
+    );
+  };
+
+  const renderMiniCity = (color: string, x: number, y: number, idx: number) => {
+    const wx = x - 10, wy = y - 5, ww = 20, wh = 12;
+    const mw = 4, mh = 5;
+    const mPositions = [wx + 1, wx + 8, wx + 15];
+    return (
+      <g key={`mc-${idx}`}>
+        <rect x={wx - 0.5} y={wy + wh - 1} width={ww + 1} height={2} rx={0.5} fill="rgba(0,0,0,0.3)" />
+        <rect x={wx} y={wy} width={ww} height={wh} fill={color} stroke="#000" strokeWidth="1.2" />
+        <rect x={wx} y={wy} width={ww} height={2} fill="rgba(255,255,255,0.2)" />
+        <rect x={wx} y={wy + wh - 3} width={ww} height={3} fill="rgba(0,0,0,0.25)" />
+        {mPositions.map((mx, i) => (
+          <g key={i}>
+            <rect x={mx} y={wy - mh} width={mw} height={mh} fill={color} stroke="#000" strokeWidth="1" />
+            <rect x={mx} y={wy - mh} width={mw} height={1.5} fill="rgba(255,255,255,0.25)" />
+          </g>
+        ))}
+      </g>
+    );
+  };
+
+  const renderMiniRoad = (color: string, x: number, y: number, idx: number) => {
+    const len = 18, hw = 3;
+    return (
+      <g key={`mr-${idx}`}>
+        <rect x={x - len / 2} y={y - hw} width={len} height={hw * 2}
+          rx={1.5} fill={color} stroke="#000" strokeWidth="1" />
+        <rect x={x - len / 2} y={y - hw} width={len} height={1.5}
+          rx={1.5} fill="rgba(255,255,255,0.2)" />
+        <rect x={x - len / 2} y={y + hw - 1.5} width={len} height={1.5}
+          rx={1.5} fill="rgba(0,0,0,0.2)" />
+      </g>
+    );
+  };
+
+  const renderPiecePiles = () =>
+    game.players.map((player, idx) => {
+      const corner = PILE_CORNERS[idx];
+      const elements: React.ReactNode[] = [];
+
+      // Player label
+      elements.push(
+        <text key={`label-${idx}`} x={corner.x + 60} y={corner.y + 10}
+          fill={player.color} fontSize="13" fontWeight="bold" textAnchor="middle"
+          stroke="rgba(0,0,0,0.6)" strokeWidth="3" paintOrder="stroke">
+          {player.name}
+        </text>
+      );
+
+      // Settlements — row below label
+      const settY = corner.y + 32;
+      for (let i = 0; i < player.pieces.settlements; i++) {
+        elements.push(renderMiniSettlement(player.color, corner.x + 14 + i * 26, settY, idx * 100 + i));
+      }
+      // Label for settlements
+      elements.push(
+        <text key={`sl-${idx}`} x={corner.x + 14 + player.pieces.settlements * 26 + 4} y={settY + 4}
+          fill="#aaa" fontSize="9" fontWeight="600">
+          {player.pieces.settlements > 0 ? `×${player.pieces.settlements}` : ''}
+        </text>
+      );
+
+      // Cities — row below settlements
+      const cityY = settY + 30;
+      for (let i = 0; i < player.pieces.cities; i++) {
+        elements.push(renderMiniCity(player.color, corner.x + 14 + i * 28, cityY, idx * 100 + 10 + i));
+      }
+      elements.push(
+        <text key={`cl-${idx}`} x={corner.x + 14 + player.pieces.cities * 28 + 4} y={cityY + 4}
+          fill="#aaa" fontSize="9" fontWeight="600">
+          {player.pieces.cities > 0 ? `×${player.pieces.cities}` : ''}
+        </text>
+      );
+
+      // Roads — rows below cities (5 per row)
+      const roadY = cityY + 28;
+      for (let i = 0; i < player.pieces.roads; i++) {
+        const row = Math.floor(i / 5);
+        const col = i % 5;
+        elements.push(renderMiniRoad(player.color, corner.x + 14 + col * 22, roadY + row * 12, idx * 100 + 20 + i));
+      }
+      elements.push(
+        <text key={`rl-${idx}`} x={corner.x + 14 + Math.min(player.pieces.roads, 5) * 22 + 4}
+          y={roadY + 4}
+          fill="#aaa" fontSize="9" fontWeight="600">
+          {player.pieces.roads > 0 ? `×${player.pieces.roads}` : ''}
+        </text>
+      );
+
+      return <g key={`pile-${idx}`}>{elements}</g>;
+    });
+
   // ── JSX ──────────────────────────────────────────────────────────────────────
 
   return (
@@ -1960,18 +2119,66 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       {/* Main Game Area */}
       <div className="game-area">
         <div className="board-container">
-          {/* viewBox expanded to show port symbols outside the hex grid */}
-          <svg viewBox="-310 -310 620 620" className="board"
-            width="620" height="620"
-            style={{ fontFamily: "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif" }}
+          {/* Recenter button */}
+          {(viewBox.x !== DEFAULT_VB.x || viewBox.y !== DEFAULT_VB.y) && (
+            <button
+              onClick={() => setViewBox(DEFAULT_VB)}
+              title="Recenter board"
+              style={{
+                position: 'absolute', top: 8, left: 8, zIndex: 12,
+                background: 'rgba(18,12,6,0.85)', border: '1px solid #6a4a2a',
+                borderRadius: '8px', padding: '4px 10px', color: '#daa520',
+                cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                backdropFilter: 'blur(4px)',
+              }}>
+              ⌖ Recenter
+            </button>
+          )}
+          <svg
+            ref={svgRef}
+            viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
+            className="board"
+            width="680" height="680"
+            style={{
+              fontFamily: "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif",
+              cursor: isPanning ? 'grabbing' : 'grab',
+            }}
+            onMouseDown={e => {
+              if (e.button !== 0) return;
+              handlePanStart(e.clientX, e.clientY);
+            }}
+            onMouseMove={e => handlePanMove(e.clientX, e.clientY)}
+            onMouseUp={() => {
+              if (!panMoved.current && buildingMode && roadBuildingRoadsLeft === 0) {
+                setBuildingMode(null);
+              }
+              handlePanEnd();
+            }}
+            onMouseLeave={handlePanEnd}
+            onTouchStart={e => {
+              if (e.touches.length === 1) {
+                handlePanStart(e.touches[0].clientX, e.touches[0].clientY);
+              }
+            }}
+            onTouchMove={e => {
+              if (e.touches.length === 1) {
+                handlePanMove(e.touches[0].clientX, e.touches[0].clientY);
+                e.preventDefault();
+              }
+            }}
+            onTouchEnd={handlePanEnd}
             onClick={() => {
-              // Cancel building mode on background click, but NOT during road building card —
-              // player must place all roads (clicking outside would forfeit a free road).
+              if (panMoved.current) return; // was a drag, not a click
               if (buildingMode && roadBuildingRoadsLeft === 0) {
                 setBuildingMode(null);
               }
             }}>
             {renderBoardDefs()}
+            {/* Table surface background — extends beyond the hex grid */}
+            <rect x={TABLE_VB.x} y={TABLE_VB.y} width={TABLE_VB.w} height={TABLE_VB.h}
+              fill="url(#table-surface)" rx="20" />
+            {/* Piece piles around the table */}
+            {renderPiecePiles()}
             {game.board.hexes.map(renderHex)}
             {renderPorts()}
             {renderRoads()}
