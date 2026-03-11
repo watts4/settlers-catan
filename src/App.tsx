@@ -1879,48 +1879,69 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     );
 
   const renderBuildableSpots = () => {
+    // Helper: render a road buildable spot with large hit target
+    const roadSpot = (e: Edge, handler: (id: string) => void) => {
+      // Compute midpoint and perpendicular for a wider invisible hit rect
+      const mx = (e.x1 + e.x2) / 2, my = (e.y1 + e.y2) / 2;
+      const dx = e.x2 - e.x1, dy = e.y2 - e.y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      return (
+        <g key={`spot-${e.id}`}>
+          {/* Invisible large hit area */}
+          <rect className="buildable-spot"
+            x={mx - len / 2 - 4} y={my - 14} width={len + 8} height={28}
+            transform={`rotate(${angle},${mx},${my})`}
+            fill="transparent" style={{ cursor: 'pointer' }}
+            onClick={ev => { ev.stopPropagation(); handler(e.id); }}
+            onPointerDown={ev => ev.stopPropagation()} />
+          {/* Visible road highlight */}
+          <line className="buildable-spot"
+            x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
+            stroke="rgba(255,255,255,0.55)" strokeWidth="12" strokeLinecap="round"
+            style={{ cursor: 'pointer', pointerEvents: 'none' }} />
+        </g>
+      );
+    };
+
+    // Helper: settlement/city circle spot with large hit target
+    const circleSpot = (v: Vertex, r: number, fill: string, stroke: string, handler: (id: string) => void) => (
+      <circle key={`spot-${v.id}`} className="buildable-spot"
+        cx={v.x} cy={v.y} r={r}
+        fill={fill} stroke={stroke} strokeWidth="3"
+        style={{ cursor: 'pointer' }}
+        onClick={e => { e.stopPropagation(); handler(v.id); }}
+        onPointerDown={e => e.stopPropagation()} />
+    );
+
     // Setup phase — auto-show spots for the human (my turn only in multiplayer)
     if (isSetup && isMyTurn) {
       if (game.setupStep === 'settlement') {
-        return getValidSettlementVertices(game).map(v => (
-          <circle key={`spot-${v.id}`} cx={v.x} cy={v.y} r={13}
-            fill="rgba(255,255,255,0.25)" stroke="#27ae60" strokeWidth="3" style={{ cursor: 'pointer' }}
-            onClick={e => { e.stopPropagation(); handlePlaceSettlement(v.id); }} />
-        ));
+        return getValidSettlementVertices(game).map(v =>
+          circleSpot(v, 16, 'rgba(255,255,255,0.25)', '#27ae60', handlePlaceSettlement)
+        );
       }
-      return getValidRoadEdgesSetup(game).map(e => (
-        <line key={`spot-${e.id}`} x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
-          stroke="rgba(255,255,255,0.55)" strokeWidth="10" strokeLinecap="round" style={{ cursor: 'pointer' }}
-          onClick={ev => { ev.stopPropagation(); handlePlaceRoad(e.id); }} />
-      ));
+      return getValidRoadEdgesSetup(game).map(e => roadSpot(e, handlePlaceRoad));
     }
 
     // Playing phase manual build mode
     if (!buildingMode || !isMyTurn || isSetup) return null;
 
     if (buildingMode === 'settlement') {
-      return getValidSettlementVertices(game).map(v => (
-        <circle key={`spot-${v.id}`} cx={v.x} cy={v.y} r={13}
-          fill="rgba(255,255,255,0.25)" stroke="#27ae60" strokeWidth="3" style={{ cursor: 'pointer' }}
-          onClick={e => { e.stopPropagation(); handlePlaceSettlementPlaying(v.id); }} />
-      ));
+      return getValidSettlementVertices(game).map(v =>
+        circleSpot(v, 16, 'rgba(255,255,255,0.25)', '#27ae60', handlePlaceSettlementPlaying)
+      );
     }
     if (buildingMode === 'road') {
-      return getValidRoadEdges(game).map(e => (
-        <line key={`spot-${e.id}`} x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
-          stroke="rgba(255,255,255,0.55)" strokeWidth="10" strokeLinecap="round" style={{ cursor: 'pointer' }}
-          onClick={ev => { ev.stopPropagation(); handlePlaceRoadPlaying(e.id); }} />
-      ));
+      return getValidRoadEdges(game).map(e => roadSpot(e, handlePlaceRoadPlaying));
     }
     if (buildingMode === 'city') {
       const cityTargets = game.board.vertices.filter(
         v => v.settlements[game.currentPlayer.toString()] === 'settlement'
       );
-      return cityTargets.map(v => (
-        <circle key={`spot-${v.id}`} cx={v.x} cy={v.y} r={16}
-          fill="rgba(255,215,0,0.35)" stroke="#f39c12" strokeWidth="3" style={{ cursor: 'pointer' }}
-          onClick={e => { e.stopPropagation(); handleUpgradeCity(v.id); }} />
-      ));
+      return cityTargets.map(v =>
+        circleSpot(v, 18, 'rgba(255,215,0,0.35)', '#f39c12', handleUpgradeCity)
+      );
     }
     return null;
   };
@@ -1937,10 +1958,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           pts.push(`${cx + HEX_SIZE * Math.cos(a)},${cy + HEX_SIZE * Math.sin(a)}`);
         }
         return (
-          <polygon key={`robber-${hex.id}`} points={pts.join(' ')}
+          <polygon key={`robber-${hex.id}`} className="buildable-spot" points={pts.join(' ')}
             fill="rgba(180,0,0,0.22)" stroke="#e74c3c" strokeWidth="2"
             style={{ cursor: 'pointer' }}
-            onClick={e => { e.stopPropagation(); handleMoveRobber(hex.id); }} />
+            onClick={e => { e.stopPropagation(); handleMoveRobber(hex.id); }}
+            onPointerDown={e => e.stopPropagation()} />
         );
       });
   };
@@ -2330,6 +2352,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             }}
             onMouseDown={e => {
               if (e.button !== 0) return;
+              const target = e.target as Element;
+              if (target.classList.contains('buildable-spot')) return;
               handlePanStart(e.clientX, e.clientY);
             }}
             onMouseMove={e => handlePanMove(e.clientX, e.clientY)}
@@ -2357,6 +2381,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 setIsPanning(false); // cancel any pan
                 e.preventDefault();
               } else if (e.touches.length === 1) {
+                // Don't start panning if touching a buildable spot
+                const target = e.target as Element;
+                if (target.classList.contains('buildable-spot')) return;
                 handlePanStart(e.touches[0].clientX, e.touches[0].clientY);
               }
             }}
@@ -2375,7 +2402,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 const newY = Math.max(TABLE_VB.y, Math.min(TABLE_VB.y + TABLE_VB.h - newH, svb.y + (svb.h - newH) * my));
                 setViewBox({ x: newX, y: newY, w: newW, h: newH });
                 e.preventDefault();
-              } else if (e.touches.length === 1) {
+              } else if (e.touches.length === 1 && isPanning) {
                 handlePanMove(e.touches[0].clientX, e.touches[0].clientY);
                 e.preventDefault();
               }
