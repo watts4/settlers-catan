@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Hexagon background -->
+  <polygon points="32,2 58,17 58,47 32,62 6,47 6,17" fill="#C8822A" stroke="#8B5E14" stroke-width="3"/>
+  <!-- Inner hexagon border -->
+  <polygon points="32,8 52,20 52,44 32,56 12,44 12,20" fill="#E8A840" stroke="#C8822A" stroke-width="1.5"/>
+  <!-- Wheat sheaf - center stalk -->
+  <line x1="32" y1="48" x2="32" y2="18" stroke="#5D4E37" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Wheat grains - left -->
+  <ellipse cx="27" cy="22" rx="3.5" ry="6" fill="#DAA520" transform="rotate(-15,27,22)"/>
+  <ellipse cx="28" cy="30" rx="3" ry="5" fill="#DAA520" transform="rotate(-12,28,30)"/>
+  <!-- Wheat grains - right -->
+  <ellipse cx="37" cy="22" rx="3.5" ry="6" fill="#DAA520" transform="rotate(15,37,22)"/>
+  <ellipse cx="36" cy="30" rx="3" ry="5" fill="#DAA520" transform="rotate(12,36,30)"/>
+  <!-- Wheat grain - center top -->
+  <ellipse cx="32" cy="19" rx="3" ry="5.5" fill="#DAA520"/>
+  <!-- Small awns (whiskers) -->
+  <line x1="27" y1="16" x2="23" y2="12" stroke="#8B7355" stroke-width="1" stroke-linecap="round"/>
+  <line x1="32" y1="13" x2="32" y2="9" stroke="#8B7355" stroke-width="1" stroke-linecap="round"/>
+  <line x1="37" y1="16" x2="41" y2="12" stroke="#8B7355" stroke-width="1" stroke-linecap="round"/>
+  <!-- Tie around sheaf -->
+  <path d="M28,40 Q32,43 36,40" stroke="#5D4E37" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M28,40 Q32,37 36,40" stroke="#5D4E37" stroke-width="2" fill="none" stroke-linecap="round"/>
+</svg>
