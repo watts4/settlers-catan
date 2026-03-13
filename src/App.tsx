@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { GameState, Hex, Resource, Vertex, Edge, Port, Player, MultiplayerConfig } from './types';
 import {
   createInitialGameState, rollDice, distributeResources,
-  calculateVP, addLog, advanceSetupState, canAfford, BUILD_COSTS,
+  calculateVP, checkWinCondition, addLog, advanceSetupState, canAfford, BUILD_COSTS,
   getTotalResources, discardHalf,
   updateLargestArmy, updateLongestRoad,
   playKnight, playRoadBuilding, playYearOfPlenty, playMonopoly,
@@ -794,6 +794,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         ),
       };
       addLog(newGame, `${player.name} built a settlement`);
+      updateLongestRoad(newGame);
+      // Check win condition immediately
+      for (const p of newGame.players) p.victoryPoints = calculateVP(p, newGame);
+      const w = checkWinCondition(newGame);
+      if (w !== null) { newGame.winner = w; newGame.phase = 'gameOver'; }
       return newGame;
     });
     setBuildingMode(null);
@@ -982,12 +987,22 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     setDevCardPlayedThisTurn(false);
     setPlayerTradeOffer({}); setPlayerTradeRequest({}); setPlayerTradeResponses([]);
     setBankTradeModalOpen(false); setPlayerTradeModalOpen(false); setBuildModalOpen(false);
-    setGame(prev => ({
-      ...prev,
-      currentPlayer: (prev.currentPlayer + 1) % 4,
-      turn: prev.turn + 1,
-      dice: null,
-    }));
+    setGame(prev => {
+      // Update VP for all players and check win condition before advancing
+      for (const p of prev.players) {
+        p.victoryPoints = calculateVP(p, prev);
+      }
+      const winner = checkWinCondition(prev);
+      if (winner !== null) {
+        return { ...prev, winner, phase: 'gameOver' };
+      }
+      return {
+        ...prev,
+        currentPlayer: (prev.currentPlayer + 1) % 4,
+        turn: prev.turn + 1,
+        dice: null,
+      };
+    });
   };
 
   const handleNewGame = () => {
@@ -1499,6 +1514,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         ),
       };
       addLog(newGame, `${player.name} upgraded to a city`);
+      // Check win condition immediately
+      for (const p of newGame.players) p.victoryPoints = calculateVP(p, newGame);
+      const w = checkWinCondition(newGame);
+      if (w !== null) { newGame.winner = w; newGame.phase = 'gameOver'; }
       return newGame;
     });
     setBuildingMode(null);
