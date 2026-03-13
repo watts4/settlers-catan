@@ -1675,7 +1675,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
     // Illustrated emoji — position depends on whether there's a number token
     const tileEmojis = HEX_TILE_EMOJI[hex.resource];
-    const emojiY = hasNumber ? cy - 16 : cy + 4;
+    const emojiY = hasNumber ? cy - 22 : cy + 4;
 
     return (
       <g key={hex.id}>
@@ -1709,9 +1709,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         {hasNumber && (
           <g>
             {/* Token background circle */}
-            <circle cx={cx} cy={cy + 14} r={19} fill={hex.hasRobber ? '#333' : '#f5e6c8'} stroke="#8b6914" strokeWidth="1.5" />
+            <circle cx={cx} cy={cy + 14} r={28} fill={hex.hasRobber ? '#333' : '#f5e6c8'} stroke="#8b6914" strokeWidth="2" />
             {/* The number */}
-            <text x={cx} y={cy + 10} textAnchor="middle" fill={numColor} fontSize={isHighNumber ? '15' : '14'} fontWeight="bold" style={{ userSelect: 'none' }}>
+            <text x={cx} y={cy + 11} textAnchor="middle" fill={numColor} fontSize={isHighNumber ? '24' : '22'} fontWeight="bold" style={{ userSelect: 'none' }}>
               {hex.number}
             </text>
             {/* Probability dots below the number */}
@@ -1719,8 +1719,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               <circle
                 key={i}
                 cx={cx - totalDotWidth / 2 + i * dotSpacing}
-                cy={cy + 22}
-                r={2}
+                cy={cy + 25}
+                r={2.5}
                 fill={isHighNumber ? '#c0392b' : '#1a1a2e'}
               />
             ))}
