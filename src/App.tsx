@@ -1009,12 +1009,16 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   };
 
   const handleBankTrade = () => {
-    if (totalOfferCredits === 0 || totalRequestAmount === 0 || totalRequestAmount > totalOfferCredits) return;
+    const ratios = getTradeRatios(game, game.currentPlayer);
+    const credits = RESOURCES.reduce((s, r) => s + Math.floor((tradeOffer[r] || 0) / (ratios[r] || 4)), 0);
+    const reqAmt = RESOURCES.reduce((s, r) => s + (tradeRequest[r] || 0), 0);
+    if (credits === 0 || reqAmt === 0 || reqAmt > credits) return;
     const player = currentPlayer;
     setGame(prev => {
+      const freshRatios = getTradeRatios(prev, prev.currentPlayer);
       const newResources = { ...prev.players[prev.currentPlayer].resources };
       RESOURCES.forEach(r => {
-        const ratio = tradeRatios[r] || 4;
+        const ratio = freshRatios[r] || 4;
         const offered = tradeOffer[r] || 0;
         const usedBatches = Math.floor(offered / ratio);
         newResources[r] = (newResources[r] || 0) - usedBatches * ratio;
@@ -2629,23 +2633,13 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           {/* Bank Trade Modal */}
           {bankTradeModalOpen && (() => {
             const modalClose = () => { setBankTradeModalOpen(false); setTradeOffer({}); setTradeRequest({}); };
-            const tapCell = (r: Resource, count: number, onTap: () => void, accent: string, ratioLabel?: string) => (
-              <div key={r} onClick={onTap} style={{
-                flex: 1, cursor: 'pointer', borderRadius: '12px', padding: '10px 4px',
-                background: count > 0 ? (accent === '#e67e22' ? '#2a1800' : '#001e10') : '#141e2a',
-                border: `2px solid ${count > 0 ? accent : '#2a3a4a'}`,
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
-                userSelect: 'none', transition: 'background 0.12s, border-color 0.12s',
-              }}>
-                <span style={{ fontSize: '2.4rem', lineHeight: 1 }}>{HEX_ICON[r]}</span>
-                {ratioLabel && <span style={{ fontSize: '0.6rem', color: '#566a66', fontWeight: 600 }}>{ratioLabel}</span>}
-                <span style={{ fontSize: '1.15rem', fontWeight: 'bold', color: count > 0 ? accent : '#333', minHeight: '1.4em', lineHeight: 1 }}>
-                  {count > 0 ? `+${count}` : ''}
-                </span>
-              </div>
-            );
-            const canExecute = totalOfferCredits > 0 && totalRequestAmount > 0 && totalRequestAmount <= totalOfferCredits;
+            // Compute credits locally to avoid any stale closure issues
+            const localRatios = getTradeRatios(game, game.currentPlayer);
+            const localCredits = RESOURCES.reduce((s, r) => s + Math.floor((tradeOffer[r] || 0) / (localRatios[r] || 4)), 0);
+            const localRequestAmt = RESOURCES.reduce((s, r) => s + (tradeRequest[r] || 0), 0);
+            const canExecute = localCredits > 0 && localRequestAmt > 0 && localRequestAmt <= localCredits;
             const anythingSelected = RESOURCES.some(r => (tradeOffer[r] || 0) > 0) || RESOURCES.some(r => (tradeRequest[r] || 0) > 0);
+            const bankCanSelect = localCredits > localRequestAmt;
             return (
               <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }} onClick={modalClose}>
                 <div style={{ background: '#1a2332', border: '2px solid #ffd700', borderRadius: '16px', padding: '20px', maxWidth: '400px', width: '100%', boxShadow: '0 8px 40px rgba(0,0,0,0.7)' }} onClick={e => e.stopPropagation()}>
@@ -2655,15 +2649,28 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                   </div>
 
                   {/* YOU GIVE row */}
-                  <div style={{ fontSize: '0.72rem', color: '#8899aa', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🙋 You Give <span style={{ color: '#445', fontWeight: 400 }}>(tap to add)</span></div>
+                  <div style={{ fontSize: '0.72rem', color: '#8899aa', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🙋 You Give <span style={{ color: '#445', fontWeight: 400 }}>(tap to add {(localRatios[RESOURCES[0]] || 4)}x of same resource)</span></div>
                   <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
                     {RESOURCES.map(r => {
                       const offered = tradeOffer[r] || 0;
                       const have = currentPlayer?.resources[r] || 0;
-                      const ratio = tradeRatios[r] || 4;
-                      return tapCell(r, offered,
-                        () => { if (offered < have) setTradeOffer(p => ({ ...p, [r]: offered + 1 })); },
-                        '#e67e22', `${ratio}:1`
+                      const ratio = localRatios[r] || 4;
+                      const creditsFromThis = Math.floor(offered / ratio);
+                      return (
+                        <div key={r} onClick={() => { if (offered < have) setTradeOffer(p => ({ ...p, [r]: (p[r] || 0) + 1 })); }} style={{
+                          flex: 1, cursor: offered < have ? 'pointer' : 'default', borderRadius: '12px', padding: '10px 4px',
+                          background: offered > 0 ? '#2a1800' : '#141e2a',
+                          border: `2px solid ${offered > 0 ? (creditsFromThis > 0 ? '#27ae60' : '#e67e22') : '#2a3a4a'}`,
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                          userSelect: 'none', transition: 'background 0.12s, border-color 0.12s',
+                          opacity: have === 0 ? 0.4 : 1,
+                        }}>
+                          <span style={{ fontSize: '2.4rem', lineHeight: 1 }}>{HEX_ICON[r]}</span>
+                          <span style={{ fontSize: '0.6rem', color: '#566a66', fontWeight: 600 }}>{ratio}:1</span>
+                          <span style={{ fontSize: '1.15rem', fontWeight: 'bold', color: offered > 0 ? (creditsFromThis > 0 ? '#27ae60' : '#e67e22') : '#333', minHeight: '1.4em', lineHeight: 1 }}>
+                            {offered > 0 ? offered : ''}
+                          </span>
+                        </div>
                       );
                     })}
                   </div>
@@ -2671,9 +2678,9 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                   {/* Divider with credit status + clear */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                     <div style={{ flex: 1, height: '1px', background: '#2a3a4a' }} />
-                    <span style={{ fontSize: '0.8rem', color: totalOfferCredits > 0 ? '#27ae60' : '#445', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      {totalOfferCredits > 0
-                        ? `✓ ${totalOfferCredits} credit${totalOfferCredits > 1 ? 's' : ''}${totalRequestAmount > 0 ? ` · ${totalRequestAmount} used` : ''}`
+                    <span style={{ fontSize: '0.8rem', color: localCredits > 0 ? '#27ae60' : '#445', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {localCredits > 0
+                        ? `✓ ${localCredits} credit${localCredits > 1 ? 's' : ''}${localRequestAmt > 0 ? ` · ${localRequestAmt} used` : ''}`
                         : '⬇ tap to earn credits'}
                     </span>
                     <div style={{ flex: 1, height: '1px', background: '#2a3a4a' }} />
@@ -2686,13 +2693,25 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                   </div>
 
                   {/* BANK GIVES row */}
-                  <div style={{ fontSize: '0.72rem', color: '#8899aa', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>🏦 Bank Gives <span style={{ color: '#445', fontWeight: 400 }}>(tap to select)</span></div>
+                  <div style={{ fontSize: '0.72rem', color: bankCanSelect ? '#27ae60' : '#8899aa', marginBottom: '6px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{bankCanSelect ? '✓' : '🏦'} Bank Gives <span style={{ color: bankCanSelect ? '#27ae60' : '#445', fontWeight: 400 }}>{bankCanSelect ? '(tap to select)' : localCredits === 0 ? '(earn credits first)' : '(all credits used)'}</span></div>
                   <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
                     {RESOURCES.map(r => {
                       const requested = tradeRequest[r] || 0;
-                      return tapCell(r, requested,
-                        () => { if (totalRequestAmount < totalOfferCredits) setTradeRequest(p => ({ ...p, [r]: requested + 1 })); },
-                        '#27ae60'
+                      const canAdd = localRequestAmt < localCredits;
+                      return (
+                        <div key={r} onClick={() => { if (canAdd) setTradeRequest(p => ({ ...p, [r]: (p[r] || 0) + 1 })); }} style={{
+                          flex: 1, cursor: canAdd ? 'pointer' : 'default', borderRadius: '12px', padding: '10px 4px',
+                          background: requested > 0 ? '#001e10' : (canAdd ? '#141e2a' : '#0d1218'),
+                          border: `2px solid ${requested > 0 ? '#27ae60' : (canAdd ? '#3a5a4a' : '#2a3a4a')}`,
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                          userSelect: 'none', transition: 'background 0.12s, border-color 0.12s',
+                          opacity: canAdd || requested > 0 ? 1 : 0.5,
+                        }}>
+                          <span style={{ fontSize: '2.4rem', lineHeight: 1 }}>{HEX_ICON[r]}</span>
+                          <span style={{ fontSize: '1.15rem', fontWeight: 'bold', color: requested > 0 ? '#27ae60' : '#333', minHeight: '1.4em', lineHeight: 1 }}>
+                            {requested > 0 ? `+${requested}` : ''}
+                          </span>
+                        </div>
                       );
                     })}
                   </div>
