@@ -390,10 +390,6 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const canBuildCity = canAfford(currentPlayer, BUILD_COSTS.city);
   const canBuildDevCard = canAfford(currentPlayer, BUILD_COSTS.devCard) && game.devCardDeck.length > 0;
 
-  const tradeRatios = isMyTurn ? getTradeRatios(game, game.currentPlayer) : {};
-  const totalOfferCredits = RESOURCES.reduce((s, r) => s + Math.floor((tradeOffer[r] || 0) / (tradeRatios[r] || 4)), 0);
-  const totalRequestAmount = (Object.keys(tradeRequest) as Resource[]).reduce((s, r) => s + (tradeRequest[r] || 0), 0);
-
   // Robber state: human moves robber after rolling 7
   const [robbingMode, setRobbingMode] = useState(false);
   const [stealCandidates, setStealCandidates] = useState<Player[]>([]);
