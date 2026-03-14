@@ -3247,42 +3247,75 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
                 if (!humanPlayer) return null;
                 const discardSelectedTotal = RESOURCES.reduce((s, r) => s + (discardSelection[r] || 0), 0);
                 const remaining = humanDiscardPending.toDiscard - discardSelectedTotal;
+                const canConfirm = discardSelectedTotal === humanDiscardPending.toDiscard;
                 return (
-                  <div style={{ padding: '14px', background: '#5a1a1a', borderRadius: '8px', marginBottom: '10px' }}>
-                    <div style={{ marginBottom: '10px', fontWeight: 'bold', color: '#ff9090' }}>
-                      🃏 You have {getTotalResources(humanPlayer)} cards — discard {humanDiscardPending.toDiscard}
-                      {remaining > 0 && <span style={{ color: '#f88', fontWeight: 'normal', marginLeft: '8px' }}>({remaining} more to select)</span>}
+                  <div style={{ padding: '16px', background: 'linear-gradient(135deg, #3a1a08, #2a1008)', border: '1px solid #6b4a18', borderRadius: '10px', marginBottom: '10px' }}>
+                    <div style={{ marginBottom: '12px', fontWeight: 'bold', color: '#d4a020', fontSize: '0.95rem', textAlign: 'center' }}>
+                      Discard {humanDiscardPending.toDiscard} of {getTotalResources(humanPlayer)} cards
+                      {remaining > 0 && <span style={{ color: '#d2b48c', fontWeight: 'normal', marginLeft: '8px', fontSize: '0.85rem' }}>({remaining} more)</span>}
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '14px' }}>
                       {RESOURCES.map(r => {
                         const have = humanPlayer.resources[r] || 0;
                         const selected = discardSelection[r] || 0;
                         if (have === 0) return null;
+                        const canAdd = selected < have && discardSelectedTotal < humanDiscardPending.toDiscard;
                         return (
-                          <div key={r} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', background: '#2a2a2a', borderRadius: '8px', padding: '8px 12px', minWidth: '72px' }}>
-                            <span style={{ textTransform: 'capitalize', fontSize: '0.85rem', fontWeight: 'bold' }}>{r}</span>
-                            <span style={{ fontSize: '0.75rem', color: '#aaa' }}>Have: {have}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
-                              <button
-                                onClick={() => setDiscardSelection(prev => ({ ...prev, [r]: Math.max(0, (prev[r] || 0) - 1) }))}
-                                disabled={selected === 0}
-                                style={{ width: '24px', height: '24px', cursor: selected > 0 ? 'pointer' : 'default', borderRadius: '4px', border: 'none', background: selected > 0 ? '#c0392b' : '#444', color: '#fff', fontWeight: 'bold' }}
-                              >−</button>
-                              <span style={{ minWidth: '18px', textAlign: 'center', fontWeight: 'bold', color: selected > 0 ? '#ff9090' : '#fff' }}>{selected}</span>
-                              <button
-                                onClick={() => setDiscardSelection(prev => ({ ...prev, [r]: (prev[r] || 0) + 1 }))}
-                                disabled={selected >= have || discardSelectedTotal >= humanDiscardPending.toDiscard}
-                                style={{ width: '24px', height: '24px', cursor: (selected < have && discardSelectedTotal < humanDiscardPending.toDiscard) ? 'pointer' : 'default', borderRadius: '4px', border: 'none', background: (selected < have && discardSelectedTotal < humanDiscardPending.toDiscard) ? '#27ae60' : '#444', color: '#fff', fontWeight: 'bold' }}
-                              >+</button>
-                            </div>
+                          <div
+                            key={r}
+                            onClick={() => {
+                              if (canAdd) {
+                                setDiscardSelection(prev => ({ ...prev, [r]: (prev[r] || 0) + 1 }));
+                              } else if (selected > 0) {
+                                setDiscardSelection(prev => ({ ...prev, [r]: Math.max(0, (prev[r] || 0) - 1) }));
+                              }
+                            }}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              gap: '2px',
+                              background: selected > 0 ? 'rgba(139, 32, 32, 0.5)' : 'rgba(60, 40, 20, 0.6)',
+                              border: `2px solid ${selected > 0 ? '#c0392b' : '#6b4a18'}`,
+                              borderRadius: '10px',
+                              padding: '10px 14px',
+                              minWidth: '64px',
+                              cursor: (canAdd || selected > 0) ? 'pointer' : 'default',
+                              transition: 'all 0.15s ease',
+                              transform: selected > 0 ? 'scale(1.05)' : 'scale(1)',
+                              userSelect: 'none',
+                            }}
+                          >
+                            <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>{HEX_ICON[r]}</span>
+                            <span style={{ fontSize: '0.7rem', color: '#9a8a6a' }}>{have}</span>
+                            {selected > 0 && (
+                              <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#ff9090', background: 'rgba(192, 57, 43, 0.4)', borderRadius: '4px', padding: '1px 6px', marginTop: '2px' }}>
+                                −{selected}
+                              </span>
+                            )}
                           </div>
                         );
                       })}
                     </div>
                     <button
                       onClick={handleConfirmDiscard}
-                      disabled={discardSelectedTotal !== humanDiscardPending.toDiscard}
-                      style={{ padding: '8px 20px', background: discardSelectedTotal === humanDiscardPending.toDiscard ? '#c0392b' : '#555', color: '#fff', border: 'none', borderRadius: '6px', cursor: discardSelectedTotal === humanDiscardPending.toDiscard ? 'pointer' : 'default', fontWeight: 'bold', fontSize: '0.95rem' }}
+                      disabled={!canConfirm}
+                      style={{
+                        ...({} as React.CSSProperties),
+                        display: 'block',
+                        width: '100%',
+                        padding: '10px 20px',
+                        background: canConfirm ? 'linear-gradient(180deg, #c0392b, #8b2020)' : 'rgba(60, 40, 20, 0.5)',
+                        color: canConfirm ? '#fff' : '#9a8a6a',
+                        border: canConfirm ? '1px solid #e74c3c' : '1px solid #6b4a18',
+                        borderRadius: '8px',
+                        cursor: canConfirm ? 'pointer' : 'default',
+                        fontWeight: 'bold',
+                        fontSize: '0.95rem',
+                        fontFamily: "'Georgia', 'Palatino', serif",
+                        transition: 'all 0.2s ease',
+                        boxShadow: canConfirm ? '0 2px 8px rgba(192, 57, 43, 0.4)' : 'none',
+                      }}
                     >
                       Discard {humanDiscardPending.toDiscard} Cards
                     </button>

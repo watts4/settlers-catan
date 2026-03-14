@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, runTransaction } from 'firebase/firestore';
 import { db } from './firebase';
 import type { GameRoomData, GameRoomPlayer } from './useGameRoom';
 
@@ -15,16 +15,31 @@ interface GameLobbyProps {
 const PLAYER_COLORS = ['#e74c3c', '#3498db', '#ecf0f1', '#e67e22'];
 const PLAYER_LABELS = ['Red', 'Blue', 'White', 'Orange'];
 
+// Rustic outback theme colors — matches LandingPage
 const COLORS = {
-  bg: '#0d1117',
-  cardBg: '#1a2a3a',
-  cardBorder: '#2a4a6a',
-  gold: '#ffd700',
-  goldDim: '#c9a800',
-  white: '#f0f0f0',
-  muted: '#8899aa',
-  green: '#2ecc71',
-  red: '#e74c3c',
+  bg: '#1a1008',
+  bgLight: '#2a1a0e',
+  cardBg: 'rgba(60, 40, 20, 0.7)',
+  cardBorder: '#6b4a18',
+  gold: '#d4a020',
+  goldBright: '#ffd700',
+  cream: '#f0e0c8',
+  parchment: '#d2b48c',
+  muted: '#9a8a6a',
+  green: '#4a7a30',
+  greenBright: '#5d9b3a',
+  red: '#8b2020',
+  wood: '#6b3410',
+  woodLight: '#8b5e2f',
+  woodDark: '#3a1a08',
+};
+
+const btnBase: React.CSSProperties = {
+  border: 'none',
+  cursor: 'pointer',
+  fontFamily: "'Georgia', 'Palatino', serif",
+  transition: 'all 0.2s ease',
+  letterSpacing: '0.03em',
 };
 
 export default function GameLobby({
@@ -36,6 +51,7 @@ export default function GameLobby({
   onLeave,
 }: GameLobbyProps) {
   const [copied, setCopied] = useState<'link' | 'code' | null>(null);
+  const [markingAI, setMarkingAI] = useState<number | null>(null);
 
   function getPlayerInSlot(slot: number): GameRoomPlayer | undefined {
     return roomData.players.find((p) => p.slot === slot);
@@ -73,24 +89,41 @@ export default function GameLobby({
   }
 
   async function markSlotAsAI(slot: number) {
-    const existing = getPlayerInSlot(slot);
-    const aiPlayer: GameRoomPlayer = {
-      slot,
-      name: `AI Player ${slot + 1}`,
-      sessionId: `ai-${slot}`,
-      isHuman: false,
-      joinedAt: Date.now(),
-      uid: undefined,
-    };
+    if (markingAI !== null) return; // prevent rapid double-clicks
+    setMarkingAI(slot);
+    try {
+      const roomRef = doc(db, 'games', roomId);
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(roomRef);
+        if (!snap.exists()) return;
+        const data = snap.data() as GameRoomData;
 
-    const updatedPlayers = existing
-      ? roomData.players.map((p) => (p.slot === slot ? { ...p, isHuman: false, name: `AI Player ${slot + 1}` } : p))
-      : [...roomData.players, aiPlayer];
+        const existing = data.players.find((p) => p.slot === slot);
+        const aiPlayer: GameRoomPlayer = {
+          slot,
+          name: `AI Player ${slot + 1}`,
+          sessionId: `ai-${slot}`,
+          isHuman: false,
+          joinedAt: Date.now(),
+          uid: undefined,
+        };
 
-    await updateDoc(doc(db, 'games', roomId), {
-      players: updatedPlayers,
-      updatedAt: Date.now(),
-    });
+        const updatedPlayers = existing
+          ? data.players.map((p) =>
+              p.slot === slot
+                ? { ...p, isHuman: false, name: `AI Player ${slot + 1}` }
+                : p
+            )
+          : [...data.players, aiPlayer];
+
+        transaction.update(roomRef, {
+          players: updatedPlayers,
+          updatedAt: Date.now(),
+        });
+      });
+    } finally {
+      setMarkingAI(null);
+    }
   }
 
   const humanCount = roomData.players.filter((p) => p.isHuman).length;
@@ -99,9 +132,13 @@ export default function GameLobby({
     <div
       style={{
         minHeight: '100vh',
-        background: `linear-gradient(135deg, ${COLORS.bg} 0%, #0a1929 50%, #0d1117 100%)`,
-        color: COLORS.white,
-        fontFamily: "'Segoe UI', system-ui, sans-serif",
+        background: `
+          radial-gradient(ellipse at 30% 20%, rgba(107, 52, 16, 0.3) 0%, transparent 60%),
+          radial-gradient(ellipse at 70% 80%, rgba(139, 94, 47, 0.2) 0%, transparent 50%),
+          linear-gradient(180deg, ${COLORS.bg} 0%, ${COLORS.bgLight} 40%, ${COLORS.bg} 100%)
+        `,
+        color: COLORS.cream,
+        fontFamily: "'Georgia', 'Palatino', serif",
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -114,15 +151,25 @@ export default function GameLobby({
         <h1
           style={{
             fontSize: '36px',
-            fontWeight: 800,
-            color: COLORS.gold,
-            margin: '0 0 4px',
-            textShadow: `0 0 20px ${COLORS.goldDim}66`,
+            fontWeight: 700,
+            color: COLORS.goldBright,
+            margin: '0 0 6px',
+            letterSpacing: '1px',
+            textShadow: `0 2px 12px rgba(212, 160, 32, 0.4), 0 0 40px rgba(212, 160, 32, 0.15)`,
+            fontFamily: "'Georgia', 'Palatino', serif",
           }}
         >
-          🏰 Game Lobby
+          Game Lobby
         </h1>
-        <p style={{ color: COLORS.muted, margin: 0, fontSize: '14px' }}>
+        <div
+          style={{
+            width: '80px',
+            height: '2px',
+            background: `linear-gradient(90deg, transparent, ${COLORS.gold}, transparent)`,
+            margin: '8px auto 10px',
+          }}
+        />
+        <p style={{ color: COLORS.parchment, margin: 0, fontSize: '14px', fontStyle: 'italic', opacity: 0.8 }}>
           Waiting for players to join...
         </p>
       </div>
@@ -139,19 +186,21 @@ export default function GameLobby({
           width: '100%',
           maxWidth: '480px',
           boxSizing: 'border-box',
+          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 16px rgba(0,0,0,0.4)`,
         }}
       >
-        <div style={{ color: COLORS.muted, fontSize: '13px', marginBottom: '6px' }}>
-          ROOM CODE
+        <div style={{ color: COLORS.muted, fontSize: '13px', marginBottom: '6px', letterSpacing: '2px', textTransform: 'uppercase' }}>
+          Room Code
         </div>
         <div
           style={{
             fontSize: '42px',
             fontWeight: 900,
             letterSpacing: '8px',
-            color: COLORS.gold,
+            color: COLORS.goldBright,
             fontVariantNumeric: 'tabular-nums',
             marginBottom: '20px',
+            textShadow: `0 2px 12px rgba(212, 160, 32, 0.4)`,
           }}
         >
           {roomId}
@@ -161,40 +210,46 @@ export default function GameLobby({
           <button
             onClick={copyInviteLink}
             style={{
-              background: copied === 'link' ? COLORS.green : '#1e3a5a',
-              border: `1px solid ${copied === 'link' ? COLORS.green : COLORS.cardBorder}`,
-              color: COLORS.white,
+              ...btnBase,
+              background: copied === 'link'
+                ? `linear-gradient(180deg, ${COLORS.greenBright}, ${COLORS.green})`
+                : `linear-gradient(180deg, ${COLORS.woodLight}, ${COLORS.wood})`,
+              border: `1px solid ${copied === 'link' ? COLORS.greenBright : COLORS.cardBorder}`,
+              color: COLORS.cream,
               padding: '9px 18px',
               borderRadius: '8px',
-              cursor: 'pointer',
               fontSize: '13px',
               fontWeight: 600,
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              transition: 'all 0.2s',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+              textShadow: '0 1px 2px rgba(0,0,0,0.4)',
             }}
           >
-            📋 {copied === 'link' ? 'Copied!' : 'Copy Invite Link'}
+            {copied === 'link' ? 'Copied!' : 'Copy Invite Link'}
           </button>
           <button
             onClick={copyRoomCode}
             style={{
-              background: copied === 'code' ? COLORS.green : '#1e3a5a',
-              border: `1px solid ${copied === 'code' ? COLORS.green : COLORS.cardBorder}`,
-              color: COLORS.white,
+              ...btnBase,
+              background: copied === 'code'
+                ? `linear-gradient(180deg, ${COLORS.greenBright}, ${COLORS.green})`
+                : `linear-gradient(180deg, ${COLORS.woodLight}, ${COLORS.wood})`,
+              border: `1px solid ${copied === 'code' ? COLORS.greenBright : COLORS.cardBorder}`,
+              color: COLORS.cream,
               padding: '9px 18px',
               borderRadius: '8px',
-              cursor: 'pointer',
               fontSize: '13px',
               fontWeight: 600,
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              transition: 'all 0.2s',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+              textShadow: '0 1px 2px rgba(0,0,0,0.4)',
             }}
           >
-            🔑 {copied === 'code' ? 'Copied!' : 'Copy Code'}
+            {copied === 'code' ? 'Copied!' : 'Copy Code'}
           </button>
         </div>
       </div>
@@ -210,8 +265,8 @@ export default function GameLobby({
           marginBottom: '24px',
         }}
       >
-        <div style={{ color: COLORS.muted, fontSize: '13px', marginBottom: '4px' }}>
-          PLAYERS ({humanCount} / 4)
+        <div style={{ color: COLORS.muted, fontSize: '13px', marginBottom: '4px', letterSpacing: '2px', textTransform: 'uppercase' }}>
+          Players ({humanCount} / 4)
         </div>
 
         {[0, 1, 2, 3].map((slot) => {
@@ -225,7 +280,7 @@ export default function GameLobby({
               key={slot}
               style={{
                 background: isMe
-                  ? `linear-gradient(135deg, #1a2a3a, #1a3050)`
+                  ? `linear-gradient(135deg, rgba(107, 52, 16, 0.5), rgba(60, 40, 20, 0.7))`
                   : COLORS.cardBg,
                 border: `1px solid ${isMe ? COLORS.gold + '88' : COLORS.cardBorder}`,
                 borderRadius: '12px',
@@ -233,6 +288,7 @@ export default function GameLobby({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '14px',
+                boxShadow: isMe ? `0 0 12px rgba(212, 160, 32, 0.15)` : 'none',
               }}
             >
               {/* Color dot */}
@@ -255,14 +311,14 @@ export default function GameLobby({
               {/* Player info */}
               {isOccupied ? (
                 <>
-                  <span style={{ fontWeight: 600, flex: 1 }}>
+                  <span style={{ fontWeight: 600, flex: 1, color: COLORS.cream }}>
                     {isAI ? '🤖 ' : ''}{player!.name}
                     {isMe && (
                       <span
                         style={{
                           marginLeft: '8px',
                           background: COLORS.gold,
-                          color: '#000',
+                          color: '#1a1008',
                           fontSize: '10px',
                           padding: '2px 7px',
                           borderRadius: '4px',
@@ -276,7 +332,7 @@ export default function GameLobby({
                       <span
                         style={{
                           marginLeft: '8px',
-                          background: '#3a2a0a',
+                          background: COLORS.woodDark,
                           color: COLORS.gold,
                           fontSize: '10px',
                           padding: '2px 7px',
@@ -298,30 +354,33 @@ export default function GameLobby({
                         width: '8px',
                         height: '8px',
                         borderRadius: '50%',
-                        background: COLORS.green,
+                        background: COLORS.greenBright,
                         flexShrink: 0,
-                        boxShadow: `0 0 6px ${COLORS.green}`,
+                        boxShadow: `0 0 6px ${COLORS.greenBright}`,
                       }}
                     />
                   )}
                 </>
               ) : (
                 <>
-                  <span style={{ color: COLORS.muted, flex: 1, fontSize: '14px' }}>
+                  <span style={{ color: COLORS.muted, flex: 1, fontSize: '14px', fontStyle: 'italic' }}>
                     Empty slot — waiting...
                   </span>
                   {isHost && (
                     <button
                       onClick={() => markSlotAsAI(slot)}
+                      disabled={markingAI !== null}
                       style={{
+                        ...btnBase,
                         background: 'transparent',
                         border: `1px solid ${COLORS.cardBorder}`,
                         color: COLORS.muted,
                         padding: '5px 12px',
                         borderRadius: '6px',
-                        cursor: 'pointer',
                         fontSize: '12px',
                         whiteSpace: 'nowrap',
+                        opacity: markingAI !== null ? 0.5 : 1,
+                        cursor: markingAI !== null ? 'not-allowed' : 'pointer',
                       }}
                     >
                       🤖 Mark as AI
@@ -347,35 +406,37 @@ export default function GameLobby({
           <button
             onClick={onStartGame}
             style={{
+              ...btnBase,
               flex: 1,
-              background: `linear-gradient(135deg, #1a4a2a, #0f3a1a)`,
-              border: `2px solid ${COLORS.green}`,
-              color: COLORS.white,
+              background: `linear-gradient(180deg, ${COLORS.greenBright}, ${COLORS.green})`,
+              border: `2px solid ${COLORS.greenBright}`,
+              color: '#fff',
               padding: '14px',
               borderRadius: '12px',
-              cursor: 'pointer',
               fontSize: '16px',
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
+              boxShadow: `inset 0 1px 0 rgba(255,255,255,0.15), 0 3px 10px rgba(0,0,0,0.3)`,
+              textShadow: '0 1px 2px rgba(0,0,0,0.3)',
             }}
           >
-            🎲 Start Game
+            Start Game
           </button>
         )}
 
         <button
           onClick={onLeave}
           style={{
+            ...btnBase,
             flex: isHost ? '0 0 auto' : 1,
             background: 'transparent',
             border: `2px solid ${COLORS.cardBorder}`,
             color: COLORS.muted,
             padding: '14px 20px',
             borderRadius: '12px',
-            cursor: 'pointer',
             fontSize: '15px',
             fontWeight: 600,
           }}
@@ -391,6 +452,8 @@ export default function GameLobby({
           fontSize: '12px',
           marginTop: '32px',
           textAlign: 'center',
+          fontStyle: 'italic',
+          letterSpacing: '0.5px',
         }}
       >
         Share the room code or invite link with your friends!
