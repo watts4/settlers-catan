@@ -393,10 +393,10 @@ export function updateLargestArmy(state: GameState): void {
   }
 }
 
-// Get players who need to discard (have 7+ cards)
+// Get players who need to discard (have more than 7 cards)
 export function getPlayersToDiscard(state: GameState): number[] {
   return state.players
-    .filter(p => getTotalResources(p) >= 7)
+    .filter(p => getTotalResources(p) > 7)
     .map(p => p.id);
 }
 
