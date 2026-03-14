@@ -64,16 +64,16 @@ const PORTS: { q: number; r: number; edge: number; resource: Resource | 'generic
 // Get pixel center of a hex
 export function hexCenterPx(q: number, r: number): { cx: number; cy: number } {
   return {
-    cx: HEX_SIZE * 1.5 * q,
-    cy: HEX_SIZE * (Math.sqrt(3) / 2 * q + Math.sqrt(3) * r),
+    cx: HEX_SIZE * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r),
+    cy: HEX_SIZE * 1.5 * r,
   };
 }
 
 // Get pixel position of a vertex (corner loc 0-5) on a hex
-// Flat-top hexes: loc 0 = right, going clockwise
+// Pointy-top hexes: loc 0 = upper-right, going clockwise
 function vertexPx(q: number, r: number, loc: number): { x: number; y: number } {
   const { cx, cy } = hexCenterPx(q, r);
-  const angle = (loc * Math.PI) / 3;
+  const angle = (loc * Math.PI) / 3 + Math.PI / 6;
   return {
     x: cx + HEX_SIZE * Math.cos(angle),
     y: cy + HEX_SIZE * Math.sin(angle),
