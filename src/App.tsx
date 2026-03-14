@@ -9,8 +9,10 @@ import {
 } from './gameState';
 import { aiBestSetupSettlement, aiBestSetupRoad, aiDoFullTurn } from './ai';
 import { HEX_SIZE, hexCenterPx } from './board';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { doc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { extractGameStats } from './stats/extractGameStats';
+import { recordGameAndUpdateStats } from './stats/statsService';
 import './App.css';
 
 // ── Multiplayer Props ──────────────────────────────────────────────────────────
@@ -873,6 +875,27 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     return () => clearInterval(id);
   }, [isRolling]);
 
+  // Record stats when game ends
+  const [statsRecorded, setStatsRecorded] = useState(false);
+  useEffect(() => {
+    if (game.winner === null || statsRecorded) return;
+    setStatsRecorded(true);
+    const user = auth.currentUser;
+    if (!user) return; // not signed in, skip stats
+
+    // Find which player slot this user is (slot 0 for solo, mySlot for multiplayer)
+    const mySlot = multiplayerConfig?.mySlot ?? 0;
+    const isSolo = !multiplayerConfig;
+
+    const record = extractGameStats(game, mySlot, isSolo);
+    recordGameAndUpdateStats(
+      user.uid,
+      user.displayName ?? 'Player',
+      user.photoURL,
+      record,
+    ).catch((err: unknown) => console.error('Failed to record game stats:', err));
+  }, [game.winner, statsRecorded]);
+
   const handleRollDice = () => {
     if (isRolling) return;
     const dice = rollDice();
@@ -1002,6 +1025,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   };
 
   const handleNewGame = () => {
+    setStatsRecorded(false);
     setBuildingMode(null); setTradeOffer({}); setTradeRequest({}); setBuildError(null);
     setDevCardMode(null); setRoadBuildingRoadsLeft(0); setYearOfPlentyPicks([]);
     setDevCardPlayedThisTurn(false); setDevHandAtTurnStart({});

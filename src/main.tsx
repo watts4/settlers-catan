@@ -4,6 +4,7 @@ import './index.css';
 import App from './App.tsx';
 import LandingPage from './LandingPage.tsx';
 import GameLobby from './GameLobby.tsx';
+import ProfilePage from './ProfilePage.tsx';
 import type { MultiplayerConfig } from './types.ts';
 import type { GameState } from './types.ts';
 import type { GameRoomData } from './useGameRoom.ts';
@@ -17,11 +18,19 @@ import {
 } from './useGameRoom.ts';
 import { createInitialGameState } from './gameState.ts';
 import type { PlayerConfig } from './gameState.ts';
+import { auth } from './firebase.ts';
+import { onAuthStateChanged } from 'firebase/auth';
+import type { User } from 'firebase/auth';
 
-type Screen = 'landing' | 'lobby' | 'game';
+type Screen = 'landing' | 'lobby' | 'game' | 'profile';
 
 function Root() {
   const [screen, setScreen] = useState<Screen>('landing');
+  const [user, setUser] = useState<User | null>(null);
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    return unsub;
+  }, []);
   const [multiplayerConfig, setMultiplayerConfig] = useState<MultiplayerConfig | undefined>();
   const [soloInitialState, setSoloInitialState] = useState<GameState | undefined>();
   const savedGame = useSavedGame();
@@ -152,6 +161,10 @@ function Root() {
     setScreen('landing');
   };
 
+  const handleViewProfile = () => {
+    setScreen('profile');
+  };
+
   if (screen === 'landing') {
     return (
       <LandingPage
@@ -164,6 +177,19 @@ function Root() {
         savedGame={savedGame}
         onRejoinGame={handleRejoinGame}
         initialRoomCode={initialRoomCode}
+        onViewProfile={handleViewProfile}
+        isSignedIn={!!user}
+      />
+    );
+  }
+
+  if (screen === 'profile' && user) {
+    return (
+      <ProfilePage
+        uid={user.uid}
+        displayName={user.displayName ?? 'Player'}
+        photoURL={user.photoURL}
+        onBack={() => setScreen('landing')}
       />
     );
   }
@@ -184,7 +210,7 @@ function Root() {
   if (screen === 'lobby' && !roomData) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#0d1117', color: '#fff', fontSize: '1.2rem' }}>
-        ⏳ Connecting to game room…
+        Connecting to game room...
       </div>
     );
   }

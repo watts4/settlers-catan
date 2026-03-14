@@ -32,6 +32,8 @@ interface LandingPageProps {
   savedGame: { roomId: string; slot: number } | null;
   onRejoinGame: (roomId: string, slot: number) => void;
   initialRoomCode?: string | null;
+  onViewProfile?: () => void;
+  isSignedIn?: boolean;
 }
 
 // Rustic outback theme colors
@@ -74,6 +76,8 @@ export default function LandingPage({
   savedGame,
   onRejoinGame,
   initialRoomCode,
+  onViewProfile,
+  isSignedIn,
 }: LandingPageProps) {
   const isMobile = useIsMobile();
   const [user, setUser] = useState<User | null>(null);
@@ -171,6 +175,23 @@ export default function LandingPage({
             <span style={{ color: COLORS.muted, fontSize: '13px' }}>
               {user.displayName ?? user.email}
             </span>
+            {user && isSignedIn && onViewProfile && (
+              <button
+                onClick={onViewProfile}
+                style={{
+                  ...btnBase,
+                  background: `linear-gradient(180deg, ${COLORS.woodLight}, ${COLORS.wood})`,
+                  border: `1px solid ${COLORS.cardBorder}`,
+                  color: COLORS.goldBright,
+                  padding: '5px 14px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                }}
+              >
+                My Profile
+              </button>
+            )}
             <button
               onClick={handleSignOut}
               style={{
