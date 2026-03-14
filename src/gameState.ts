@@ -20,11 +20,19 @@ export interface PlayerConfig {
   isHuman: boolean;
 }
 
+function shuffle<T>(arr: T[]): T[] {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 export function createInitialGameState(playerConfigs?: PlayerConfig[]): GameState {
   const { hexes, vertices, edges, ports } = generateBoard();
 
   // Shuffle dev cards
-  const shuffledDevCards = [...DEV_CARDS].sort(() => Math.random() - 0.5);
+  const shuffledDevCards = shuffle([...DEV_CARDS]);
 
   // Create players with starting resources
   const players: Player[] = [0, 1, 2, 3].map(i => ({
