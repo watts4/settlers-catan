@@ -56,7 +56,12 @@ export default function ProfilePage({ uid, displayName, photoURL, onBack }: Prof
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    getUserStats(uid).then(s => setStats(s));
+    getUserStats(uid)
+      .then(s => setStats(s))
+      .catch(err => {
+        console.error('Failed to load profile stats:', err);
+        setStats(null);
+      });
   }, [uid]);
 
   const pageStyle: React.CSSProperties = {
