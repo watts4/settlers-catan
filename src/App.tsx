@@ -70,8 +70,8 @@ function edgesShareEndpoint(e1: Edge, e2: Edge): boolean {
 function portPixels(port: Port) {
   const { q, r, edge } = port.location;
   const { cx, cy } = hexCenterPx(q, r);
-  const a1 = (edge * Math.PI) / 3 + Math.PI / 6;
-  const a2 = ((edge + 1) % 6 * Math.PI) / 3 + Math.PI / 6;
+  const a1 = (edge * Math.PI) / 3;
+  const a2 = ((edge + 1) % 6 * Math.PI) / 3;
   const x1 = cx + HEX_SIZE * Math.cos(a1);
   const y1 = cy + HEX_SIZE * Math.sin(a1);
   const x2 = cx + HEX_SIZE * Math.cos(a2);
@@ -315,8 +315,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [discardSelection, setDiscardSelection] = useState<Partial<Record<Resource, number>>>({});
 
   // ── Board pan/zoom state ─────────────────────────────────────────────────
-  const DEFAULT_VB = { x: -350, y: -290, w: 700, h: 580 }; // initial view — tight on hex grid
-  const TABLE_VB = { x: -700, y: -580, w: 1400, h: 1160 }; // full table bounds
+  const DEFAULT_VB = { x: -280, y: -280, w: 560, h: 560 }; // initial view — tight on hex grid
+  const TABLE_VB = { x: -620, y: -620, w: 1240, h: 1240 }; // full table bounds
   const MIN_VB_SIZE = 300; // max zoom in
   const MAX_VB_SIZE = TABLE_VB.w; // max zoom out = full table
   const [viewBox, setViewBox] = useState(DEFAULT_VB);
@@ -1654,11 +1654,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   );
 
   const renderHex = (hex: Hex) => {
-    const cx = HEX_SIZE * (Math.sqrt(3) * hex.q + Math.sqrt(3) / 2 * hex.r);
-    const cy = HEX_SIZE * 1.5 * hex.r;
+    const cx = HEX_SIZE * 1.5 * hex.q;
+    const cy = HEX_SIZE * (Math.sqrt(3) / 2 * hex.q + Math.sqrt(3) * hex.r);
     const pts: string[] = [];
     for (let i = 0; i < 6; i++) {
-      const a = (i * Math.PI) / 3 + Math.PI / 6;
+      const a = (i * Math.PI) / 3;
       pts.push(`${cx + HEX_SIZE * Math.cos(a)},${cy + HEX_SIZE * Math.sin(a)}`);
     }
 
@@ -1995,7 +1995,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         const pts: string[] = [];
         const { cx, cy } = hexCenterPx(hex.q, hex.r);
         for (let i = 0; i < 6; i++) {
-          const a = (i * Math.PI) / 3 + Math.PI / 6;
+          const a = (i * Math.PI) / 3;
           pts.push(`${cx + HEX_SIZE * Math.cos(a)},${cy + HEX_SIZE * Math.sin(a)}`);
         }
         return (
@@ -2390,7 +2390,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
             ref={svgRef}
             viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}
             className="board"
-            width="800" height="660"
+            width="740" height="740"
             style={{
               fontFamily: "'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif",
               cursor: isPanning ? 'grabbing' : 'grab',
