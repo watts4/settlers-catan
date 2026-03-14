@@ -29,7 +29,7 @@ export async function getUserStats(uid: string): Promise<UserStats | null> {
 export async function recordGameAndUpdateStats(
   uid: string, displayName: string, photoURL: string | null, record: GameRecord,
 ): Promise<UserStats> {
-  let stats = await getUserStats(uid) ?? createEmptyStats(uid, displayName, photoURL);
+  const stats = await getUserStats(uid) ?? createEmptyStats(uid, displayName, photoURL);
   stats.displayName = displayName;
   stats.photoURL = photoURL;
   stats.gamesPlayed++;
