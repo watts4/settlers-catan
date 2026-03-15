@@ -5,6 +5,7 @@ import {
   setDoc,
   updateDoc,
   onSnapshot,
+  runTransaction,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { GameState } from './types';
@@ -161,46 +162,55 @@ export async function joinGameRoom(
   uid?: string,
 ): Promise<{ slot: number; isHost: boolean } | null> {
   const roomRef = doc(db, 'games', roomCode);
-  const snapshot = await getDoc(roomRef);
-
-  if (!snapshot.exists()) return null;
-
-  const data = snapshot.data() as GameRoomData;
-  if (data.status !== 'waiting') return null;
-
-  const humanPlayers = data.players.filter((p) => p.isHuman);
-  if (humanPlayers.length >= 4) return null;
-
-  const newSlot = humanPlayers.length;
   const sessionId = getOrCreateSessionId();
 
-  const newPlayer: GameRoomPlayer = {
-    slot: newSlot,
-    name: playerName,
-    ...(uid ? { uid } : {}),
-    sessionId,
-    isHuman: true,
-    joinedAt: Date.now(),
-  };
+  // Use a Firestore transaction to atomically read and update the room,
+  // preventing race conditions when two players join simultaneously.
+  const result = await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(roomRef);
 
-  // Replace any existing entry at this slot (e.g. an AI placeholder), then append the new player.
-  // Using arrayUnion would create duplicate slot entries if the host pre-marked the slot as AI.
-  const updatedPlayers = [
-    ...data.players.filter((p) => p.slot !== newSlot),
-    newPlayer,
-  ];
+    if (!snapshot.exists()) return null;
 
-  await updateDoc(roomRef, {
-    players: updatedPlayers,
-    updatedAt: Date.now(),
+    const data = snapshot.data() as GameRoomData;
+    if (data.status !== 'waiting') return null;
+
+    const humanPlayers = data.players.filter((p) => p.isHuman);
+    if (humanPlayers.length >= 4) return null;
+
+    const newSlot = humanPlayers.length;
+
+    const newPlayer: GameRoomPlayer = {
+      slot: newSlot,
+      name: playerName,
+      ...(uid ? { uid } : {}),
+      sessionId,
+      isHuman: true,
+      joinedAt: Date.now(),
+    };
+
+    // Replace any existing entry at this slot (e.g. an AI placeholder), then append the new player.
+    // Using arrayUnion would create duplicate slot entries if the host pre-marked the slot as AI.
+    const updatedPlayers = [
+      ...data.players.filter((p) => p.slot !== newSlot),
+      newPlayer,
+    ];
+
+    transaction.update(roomRef, {
+      players: updatedPlayers,
+      updatedAt: Date.now(),
+    });
+
+    return { slot: newSlot, isHost: false };
   });
 
-  localStorage.setItem(
-    'catan_active_game',
-    JSON.stringify({ roomId: roomCode, slot: newSlot }),
-  );
+  if (result) {
+    localStorage.setItem(
+      'catan_active_game',
+      JSON.stringify({ roomId: roomCode, slot: result.slot }),
+    );
+  }
 
-  return { slot: newSlot, isHost: false };
+  return result;
 }
 
 // ---------------------------------------------------------------------------
