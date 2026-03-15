@@ -101,7 +101,6 @@ export function useMultiplayerSync(
     }).catch((err: unknown) => {
       console.error('[useMultiplayerSync] write failed:', err);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game, roomId]);
 
   // Listener effect: receive remote updates
