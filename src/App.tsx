@@ -360,7 +360,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       isExternalUpdate.current = false;
       return;
     }
-    const syncId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const syncId = crypto.randomUUID();
     lastSyncId.current = syncId;
     updateDoc(doc(db, 'games', multiplayerConfig.roomId), {
       gameState: JSON.parse(JSON.stringify(game)),
@@ -561,7 +561,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         // Show trade proposal after dice flash animation finishes
         setTimeout(() => {
           pendingTradeRef.current = false;
-          const tradeId = `ai-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const tradeId = `ai-${crypto.randomUUID()}`;
           setAiTradeProposal(tradeData);
           // Embed trade in game state so Firestore syncs it to all clients
           setGame(prev => ({
@@ -1092,7 +1092,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       const humanResponses = humanOpponents.map(p => ({ playerId: p.id, accepts: false, isPending: true }));
       setPlayerTradeResponses([...aiResponses, ...humanResponses]);
       if (humanOpponents.length > 0) {
-        const tradeId = `human-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const tradeId = `human-${crypto.randomUUID()}`;
         myPendingHumanTradeIdRef.current = tradeId;
         setGame(prev => ({
           ...prev,
