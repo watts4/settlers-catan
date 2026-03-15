@@ -293,7 +293,7 @@ function StatBox({ label, value, color, icon }: { label: string; value: string |
       padding: '12px 10px',
       textAlign: 'center',
     }}>
-      {icon && <div style={{ fontSize: 20, marginBottom: 4 }} dangerouslySetInnerHTML={{ __html: icon }} />}
+      {icon && <div style={{ fontSize: 20, marginBottom: 4 }}>{icon}</div>}
       <div style={{ fontSize: 22, fontWeight: 'bold', color: color ?? COLORS.cream }}>{value}</div>
       <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>{label}</div>
     </div>
