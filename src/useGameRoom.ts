@@ -48,26 +48,19 @@ export function getOrCreateSessionId(): string {
   const stored = localStorage.getItem('catan_session_id');
   if (stored) return stored;
 
-  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let id = '';
-  for (let i = 0; i < 12; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+  const id = crypto.randomUUID();
   localStorage.setItem('catan_session_id', id);
   return id;
 }
 
 export function generateRoomCode(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('');
 }
 
 function generateId(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  return crypto.randomUUID();
 }
 
 // ---------------------------------------------------------------------------
