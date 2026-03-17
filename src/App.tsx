@@ -521,7 +521,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     } else {
       // Auto-discard AI players only; human will choose via UI
       for (const p of afterRoll.players) {
-        if (!p.isHuman && getTotalResources(p) >= 8) discardHalf(afterRoll, p.id);
+        if (!p.isHuman && getTotalResources(p) >= 8) {
+          const before = getTotalResources(p);
+          discardHalf(afterRoll, p.id);
+          addLog(afterRoll, `${p.name} discarded ${before - getTotalResources(p)} cards (had ${before})`);
+        }
       }
       const humansToDiscard = afterRoll.players
         .filter(p => p.isHuman && getTotalResources(p) >= 8)
@@ -919,13 +923,17 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       showDiceFlash(dice);
       if (gains.length > 0) showResourceGains(gains);
       setGame(prev => {
-        const newGame = { ...prev, dice };
+        const newGame: GameState = JSON.parse(JSON.stringify({ ...prev, dice }));
         if (sum !== 7) {
           distributeResources(newGame, sum);
         } else {
           for (const p of newGame.players) {
             // Auto-discard AI players only; human will choose via UI
-            if (!p.isHuman && getTotalResources(p) >= 8) discardHalf(newGame, p.id);
+            if (!p.isHuman && getTotalResources(p) >= 8) {
+              const before = getTotalResources(p);
+              discardHalf(newGame, p.id);
+              addLog(newGame, `${p.name} discarded ${before - getTotalResources(p)} cards (had ${before})`);
+            }
           }
           // In multiplayer, track ALL human players who need to discard
           if (multiplayerConfig) {
@@ -2384,7 +2392,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               <span className="resource" style={{ color: '#ccc' }}>
                 {player.devCards.length} 🃏
               </span>
-              <span className="resource" style={{ color: getTotalResources(player) >= 7 ? '#e74c3c' : '#aaa' }}>
+              <span className="resource" style={{ color: getTotalResources(player) >= 8 ? '#e74c3c' : '#aaa' }}>
                 {getTotalResources(player)} 🂠
               </span>
             </div>
