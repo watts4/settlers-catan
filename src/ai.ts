@@ -4,7 +4,7 @@ import type { GameState, Resource, Vertex, Edge } from './types';
 import {
   canAfford, BUILD_COSTS, deductResources,
   addLog, getPlayersAdjacentToHex, stealResource,
-  moveRobber, getTotalResources,
+  moveRobber, getTotalResources, discardHalf,
   updateLongestRoad, updateLargestArmy, calculateVP, checkWinCondition,
 } from './gameState';
 import { hexCenterPx, HEX_SIZE } from './board';
@@ -256,8 +256,21 @@ export function aiDoFullTurn(state: GameState): GameState {
   const player = s.players[pid];
   const diceSum = s.dice ? s.dice[0] + s.dice[1] : 0;
 
-  // --- Handle robber if 7 was rolled ---
+  // --- Handle robber and discards if 7 was rolled ---
   if (diceSum === 7) {
+    // Force all players with more than 7 cards to discard half (rounded down).
+    // AI players auto-discard randomly; this also serves as a safety net in case
+    // the caller did not already apply discards before invoking aiDoFullTurn.
+    for (const p of s.players) {
+      if (!p.isHuman && getTotalResources(p) > 7) {
+        const before = getTotalResources(p);
+        discardHalf(s, p.id);
+        const discarded = before - getTotalResources(p);
+        if (discarded > 0) {
+          addLog(s, `${p.name} discarded ${discarded} cards (had ${before})`);
+        }
+      }
+    }
     aiMoveRobber(s);
   }
 
