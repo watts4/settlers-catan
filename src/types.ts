@@ -123,3 +123,22 @@ export interface GameState {
     requesting: Partial<Record<Resource, number>>;
   } | null;
 }
+
+/**
+ * Lightweight type guard for data arriving from Firestore or localStorage.
+ * Checks structural integrity — not a full deep validation — but enough to
+ * catch a null / missing / corrupted document before passing it to the game engine.
+ */
+export function isValidGameState(value: unknown): value is GameState {
+  if (!value || typeof value !== 'object') return false;
+  const s = value as Record<string, unknown>;
+  return (
+    Array.isArray(s.players) &&
+    s.players.length > 0 &&
+    typeof s.board === 'object' && s.board !== null &&
+    Array.isArray((s.board as Record<string, unknown>).hexes) &&
+    Array.isArray((s.board as Record<string, unknown>).vertices) &&
+    typeof s.currentPlayer === 'number' &&
+    typeof s.phase === 'string'
+  );
+}

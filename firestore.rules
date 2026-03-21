@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Game rooms ──────────────────────────────────────────────────────────
+    match /games/{roomId} {
+      // Reading a room is needed to check room exists before joining
+      allow read: if request.auth != null;
+
+      // Create: authenticated user, valid initial shape
+      allow create: if request.auth != null
+        && request.resource.data.status == 'waiting'
+        && request.resource.data.players is list
+        && request.resource.data.players.size() >= 1
+        && request.resource.data.players.size() <= 4
+        && request.resource.data.createdAt is number
+        && request.resource.data.updatedAt is number;
+
+      // Update: authenticated, room id immutable, status must be valid,
+      // player list cannot be empty, and updatedAt must advance
+      allow update: if request.auth != null
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.status in ['waiting', 'playing', 'finished']
+        && request.resource.data.players is list
+        && request.resource.data.players.size() >= 1
+        && request.resource.data.updatedAt >= resource.data.updatedAt;
+
+      // No client-side deletes — cleanup is handled server-side
+      allow delete: if false;
+    }
+
+    // ── User stats ───────────────────────────────────────────────────────────
+    match /userStats/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}

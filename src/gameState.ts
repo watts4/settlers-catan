@@ -413,22 +413,24 @@ export function discardHalf(state: GameState, playerId: number): void {
   const player = state.players[playerId];
   const total = getTotalResources(player);
   const toDiscard = Math.floor(total / 2);
-  
-  // Discard random resources
-  let discarded = 0;
-  const resources = (['wood', 'brick', 'sheep', 'wheat', 'ore'] as Resource[]).filter(
-    r => (player.resources[r] || 0) > 0
-  );
-  
-  while (discarded < toDiscard && resources.length > 0) {
-    const res = resources[Math.floor(Math.random() * resources.length)];
-    if ((player.resources[res] || 0) > 0) {
-      player.resources[res] = (player.resources[res] || 0) - 1;
-      discarded++;
-    } else {
-      const idx = resources.indexOf(res);
-      resources.splice(idx, 1);
-    }
+  if (toDiscard === 0) return;
+
+  // Build a flat list of every card the player holds, then shuffle it.
+  // Taking the first `toDiscard` entries guarantees exactly the right
+  // number is discarded regardless of resource distribution.
+  const flat: Resource[] = [];
+  for (const r of ['wood', 'brick', 'sheep', 'wheat', 'ore'] as Resource[]) {
+    for (let i = 0; i < (player.resources[r] ?? 0); i++) flat.push(r);
+  }
+
+  // Fisher-Yates shuffle
+  for (let i = flat.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [flat[i], flat[j]] = [flat[j], flat[i]];
+  }
+
+  for (let i = 0; i < toDiscard; i++) {
+    player.resources[flat[i]] = (player.resources[flat[i]] ?? 0) - 1;
   }
 }
 

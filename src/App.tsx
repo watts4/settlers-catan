@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { GameState, Hex, Resource, Vertex, Edge, Port, Player, MultiplayerConfig } from './types';
+import { isValidGameState } from './types';
 import {
   createInitialGameState, rollDice, distributeResources,
   calculateVP, checkWinCondition, addLog, advanceSetupState, canAfford, BUILD_COSTS,
@@ -274,6 +275,7 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const [isRolling, setIsRolling] = useState(false);
   const [animDice, setAnimDice] = useState<[number, number]>([1, 1]);
   const [flashDice, setFlashDice] = useState<[number, number] | null>(null);
+  const [syncError, setSyncError] = useState(false);
   // Resource fly animation
   const [flyingResources, setFlyingResources] = useState<ResourceGain[]>([]);
   const playerCardRefs = useRef<(HTMLDivElement | null)[]>([null, null, null, null]);
@@ -337,6 +339,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   const isExternalUpdate = useRef(false);
   // Safety guard: non-host must not write to Firestore until it has the real game state
   const hasInitialState = useRef(!multiplayerConfig || multiplayerConfig.isHost || !!initialGameState);
+  // Monotonic counter written alongside gameState — lets each client reject stale remote updates
+  const localVersion = useRef(0);
 
   // Listen to Firestore for game state changes from other players
   useEffect(() => {
@@ -346,9 +350,17 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       const data = snap.data();
       if (!data?.gameState || !data?.syncId) return;
       if (data.syncId === lastSyncId.current) return; // our own write echoing back
+      // Reject stale updates: only apply if the incoming version is newer than ours
+      const incomingVersion = (data.stateVersion as number | undefined) ?? 0;
+      if (incomingVersion <= localVersion.current) return;
+      if (!isValidGameState(data.gameState)) {
+        console.error('[sync] Received malformed game state from Firestore — ignoring');
+        return;
+      }
+      localVersion.current = incomingVersion;
       hasInitialState.current = true;
       isExternalUpdate.current = true;
-      setGame(data.gameState as GameState);
+      setGame(data.gameState);
     });
   }, [multiplayerConfig?.roomId]);
 
@@ -362,11 +374,17 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     }
     const syncId = crypto.randomUUID();
     lastSyncId.current = syncId;
+    localVersion.current += 1;
     updateDoc(doc(db, 'games', multiplayerConfig.roomId), {
       gameState: JSON.parse(JSON.stringify(game)),
+      stateVersion: localVersion.current,
       syncId,
       updatedAt: Date.now(),
-    }).catch(console.error);
+    }).then(() => setSyncError(false))
+      .catch((err: unknown) => {
+        console.error('[sync] Firestore write failed:', err);
+        setSyncError(true);
+      });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game]);
 
@@ -881,23 +899,30 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
   // Record stats when game ends
   const [statsRecorded, setStatsRecorded] = useState(false);
+  const [statsError, setStatsError] = useState(false);
   useEffect(() => {
     if (game.winner === null || statsRecorded) return;
     setStatsRecorded(true);
     const user = auth.currentUser;
-    if (!user) return; // not signed in, skip stats
+    if (!user) return; // anonymous or not signed in — skip stats
 
-    // Find which player slot this user is (slot 0 for solo, mySlot for multiplayer)
     const mySlot = multiplayerConfig?.mySlot ?? 0;
     const isSolo = !multiplayerConfig;
-
     const record = extractGameStats(game, mySlot, isSolo);
-    recordGameAndUpdateStats(
-      user.uid,
-      user.displayName ?? 'Player',
-      user.photoURL,
-      record,
-    ).catch((err: unknown) => console.error('Failed to record game stats:', err));
+
+    void (async () => {
+      try {
+        await recordGameAndUpdateStats(
+          user.uid,
+          user.displayName ?? 'Player',
+          user.photoURL,
+          record,
+        );
+      } catch (err: unknown) {
+        console.error('Failed to record game stats:', err);
+        setStatsError(true);
+      }
+    })();
   }, [game.winner, statsRecorded]);
 
   const handleRollDice = () => {
@@ -2325,6 +2350,24 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
 
   return (
     <div className="game">
+      {syncError && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          background: '#7a2020', color: '#fdd', textAlign: 'center',
+          padding: '8px 16px', fontSize: '13px', fontWeight: 600,
+        }}>
+          ⚠ Connection lost — game state may be out of sync. Check your network.
+        </div>
+      )}
+      {statsError && (
+        <div style={{
+          position: 'fixed', top: syncError ? 36 : 0, left: 0, right: 0, zIndex: 9998,
+          background: '#5a4000', color: '#ffe', textAlign: 'center',
+          padding: '8px 16px', fontSize: '13px', fontWeight: 600,
+        }}>
+          ⚠ Could not save your game stats. Check your connection and try refreshing.
+        </div>
+      )}
       <header className="header">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
           {/* Left: menu button */}
