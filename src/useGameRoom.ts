@@ -6,6 +6,7 @@ import {
   updateDoc,
   onSnapshot,
   runTransaction,
+  arrayUnion,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -32,6 +33,7 @@ export interface GameRoomPlayer {
 export interface GameRoomData {
   id: string;
   hostSessionId: string;
+  authorizedUids: string[];  // top-level list of UIDs allowed to read/write this room
   players: GameRoomPlayer[];
   status: 'waiting' | 'playing' | 'finished';
   gameState?: Record<string, unknown>; // serialized GameState
@@ -78,6 +80,7 @@ export async function createGameRoom(
   const roomData: GameRoomData = {
     id: roomCode,
     hostSessionId: sessionId,
+    authorizedUids: uid ? [uid] : [],
     players: [
       {
         slot: 0,
@@ -154,6 +157,7 @@ export async function joinGameRoom(
         gameState: updatedGameState,
         syncId: generateId(),
         updatedAt: Date.now(),
+        ...(uid ? { authorizedUids: arrayUnion(uid) } : {}),
       });
 
       return { slot, isHost: false, gameState: updatedGameState };
@@ -185,6 +189,7 @@ export async function joinGameRoom(
     transaction.update(roomRef, {
       players: updatedPlayers,
       updatedAt: Date.now(),
+      ...(uid ? { authorizedUids: arrayUnion(uid) } : {}),
     });
 
     return { slot: newSlot, isHost: false };
