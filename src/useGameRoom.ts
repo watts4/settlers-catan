@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   doc,
   getDoc,
@@ -8,7 +8,6 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { GameState } from './types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +36,7 @@ export interface GameRoomData {
   status: 'waiting' | 'playing' | 'finished';
   gameState?: Record<string, unknown>; // serialized GameState
   syncId?: string;
+  stateVersion?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -62,58 +62,6 @@ export function generateRoomCode(): string {
 
 function generateId(): string {
   return crypto.randomUUID();
-}
-
-// ---------------------------------------------------------------------------
-// useMultiplayerSync
-// ---------------------------------------------------------------------------
-
-export function useMultiplayerSync(
-  game: GameState,
-  setGame: (s: GameState) => void,
-  roomId?: string,
-): void {
-  const lastSyncId = useRef<string>('');
-  const isExternalUpdate = useRef<boolean>(false);
-
-  // Write effect: push local state to Firestore
-  useEffect(() => {
-    if (!roomId) return;
-
-    if (isExternalUpdate.current) {
-      isExternalUpdate.current = false;
-      return;
-    }
-
-    const syncId = generateId();
-    lastSyncId.current = syncId;
-
-    updateDoc(doc(db, 'games', roomId), {
-      gameState: game as unknown as Record<string, unknown>,
-      syncId,
-      updatedAt: Date.now(),
-    }).catch((err: unknown) => {
-      console.error('[useMultiplayerSync] write failed:', err);
-    });
-  }, [game, roomId]);
-
-  // Listener effect: receive remote updates
-  useEffect(() => {
-    if (!roomId) return;
-
-    const unsub = onSnapshot(doc(db, 'games', roomId), (snapshot) => {
-      if (!snapshot.exists()) return;
-      const data = snapshot.data() as GameRoomData;
-
-      // If this update was triggered by our own write, skip it
-      if (data.syncId === lastSyncId.current) return;
-
-      isExternalUpdate.current = true;
-      setGame(data.gameState as unknown as GameState);
-    });
-
-    return unsub;
-  }, [roomId, setGame]);
 }
 
 // ---------------------------------------------------------------------------
