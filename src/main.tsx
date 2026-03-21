@@ -118,11 +118,18 @@ function Root() {
         isHost: result.isHost,
         playerName,
       });
-      setScreen('lobby');
       // Clear ?room= from URL without page reload
       const url = new URL(window.location.href);
       url.searchParams.delete('room');
       window.history.replaceState({}, '', url.toString());
+
+      if (result.gameState) {
+        // Late join: game already in progress — skip lobby, go straight to game
+        setMpInitialState(result.gameState as unknown as GameState);
+        setScreen('game');
+      } else {
+        setScreen('lobby');
+      }
     } catch (e) {
       console.error('Failed to join game room:', e);
       alert('Failed to join game room. Please try again.');
