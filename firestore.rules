@@ -4,8 +4,9 @@ service cloud.firestore {
 
     // ── Game rooms ──────────────────────────────────────────────────────────
     match /games/{roomId} {
-      // Reading a room is needed to check room exists before joining
-      allow read: if request.auth != null;
+      // Reading a room requires the caller to be an authorized participant
+      allow read: if request.auth != null
+        && request.auth.uid in resource.data.authorizedUids;
 
       // Create: authenticated user, valid initial shape
       allow create: if request.auth != null
@@ -16,9 +17,11 @@ service cloud.firestore {
         && request.resource.data.createdAt is number
         && request.resource.data.updatedAt is number;
 
-      // Update: authenticated, room id immutable, status must be valid,
-      // player list cannot be empty, and updatedAt must advance
+      // Update: only authorized participants may overwrite game state;
+      // room id immutable, status must be valid, player list cannot be empty,
+      // and updatedAt must advance
       allow update: if request.auth != null
+        && request.auth.uid in resource.data.authorizedUids
         && request.resource.data.id == resource.data.id
         && request.resource.data.status in ['waiting', 'playing', 'finished']
         && request.resource.data.players is list
