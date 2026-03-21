@@ -160,7 +160,7 @@ export async function joinGameRoom(
   roomCode: string,
   playerName: string,
   uid?: string,
-): Promise<{ slot: number; isHost: boolean } | null> {
+): Promise<{ slot: number; isHost: boolean; gameState?: unknown } | null> {
   const roomRef = doc(db, 'games', roomCode);
   const sessionId = getOrCreateSessionId();
 
@@ -172,6 +172,45 @@ export async function joinGameRoom(
     if (!snapshot.exists()) return null;
 
     const data = snapshot.data() as GameRoomData;
+
+    // Late join: game already in progress — take over an AI slot
+    if (data.status === 'playing') {
+      const aiSlotEntry = data.players.find((p) => !p.isHuman);
+      if (!aiSlotEntry) return null; // no AI slots to take over
+
+      const slot = aiSlotEntry.slot;
+      const newPlayer: GameRoomPlayer = {
+        slot,
+        name: playerName,
+        ...(uid ? { uid } : {}),
+        sessionId,
+        isHuman: true,
+        joinedAt: Date.now(),
+      };
+
+      const updatedPlayers = [
+        ...data.players.filter((p) => p.slot !== slot),
+        newPlayer,
+      ];
+
+      // Patch the live gameState so the host stops treating this slot as AI
+      let updatedGameState = data.gameState;
+      if (updatedGameState) {
+        const gsPlayers = [...((updatedGameState as Record<string, unknown[]>).players ?? [])];
+        gsPlayers[slot] = { ...(gsPlayers[slot] as Record<string, unknown>), isHuman: true, name: playerName };
+        updatedGameState = { ...updatedGameState, players: gsPlayers };
+      }
+
+      transaction.update(roomRef, {
+        players: updatedPlayers,
+        gameState: updatedGameState,
+        syncId: generateId(),
+        updatedAt: Date.now(),
+      });
+
+      return { slot, isHost: false, gameState: updatedGameState };
+    }
+
     if (data.status !== 'waiting') return null;
 
     const humanPlayers = data.players.filter((p) => p.isHuman);
