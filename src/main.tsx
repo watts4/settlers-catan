@@ -7,6 +7,7 @@ import GameLobby from './GameLobby.tsx';
 import ProfilePage from './ProfilePage.tsx';
 import type { MultiplayerConfig } from './types.ts';
 import type { GameState } from './types.ts';
+import { isValidGameState } from './types.ts';
 import type { GameRoomData } from './useGameRoom.ts';
 import {
   createGameRoom,
@@ -18,7 +19,7 @@ import {
 } from './useGameRoom.ts';
 import { createInitialGameState } from './gameState.ts';
 import type { PlayerConfig } from './gameState.ts';
-import { auth } from './firebase.ts';
+import { auth, ensureAuth } from './firebase.ts';
 import { onAuthStateChanged } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 
@@ -59,8 +60,8 @@ function Root() {
     if (screen !== 'lobby' || !roomData || !multiplayerConfig) return;
     if (roomData.status === 'playing') {
       // Non-host: grab the game state written by the host so App doesn't create a default
-      if (!multiplayerConfig.isHost && roomData.gameState) {
-        setMpInitialState(roomData.gameState as unknown as GameState);
+      if (!multiplayerConfig.isHost && isValidGameState(roomData.gameState)) {
+        setMpInitialState(roomData.gameState);
       }
       setScreen('game');
     }
@@ -84,8 +85,13 @@ function Root() {
     try {
       const raw = localStorage.getItem('catan_solo_save');
       if (raw) {
-        const saved = JSON.parse(raw) as GameState;
-        setSoloInitialState(saved);
+        const parsed: unknown = JSON.parse(raw);
+        if (isValidGameState(parsed)) {
+          setSoloInitialState(parsed);
+        } else {
+          console.warn('Solo save data is invalid — starting fresh');
+          localStorage.removeItem('catan_solo_save');
+        }
       }
     } catch {
       setSoloInitialState(undefined);
@@ -96,7 +102,8 @@ function Root() {
 
   const handleCreateMultiplayer = async (playerName: string) => {
     try {
-      const roomId = await createGameRoom(playerName);
+      const uid = await ensureAuth();
+      const roomId = await createGameRoom(playerName, uid);
       setMultiplayerConfig({ roomId, mySlot: 0, isHost: true, playerName });
       setScreen('lobby');
     } catch (e) {
@@ -107,7 +114,8 @@ function Root() {
 
   const handleJoinMultiplayer = async (roomCode: string, playerName: string) => {
     try {
-      const result = await joinGameRoom(roomCode.toUpperCase(), playerName);
+      const uid = await ensureAuth();
+      const result = await joinGameRoom(roomCode.toUpperCase(), playerName, uid);
       if (!result) {
         alert('Game room not found or already full. Check the code and try again.');
         return;
@@ -123,9 +131,9 @@ function Root() {
       url.searchParams.delete('room');
       window.history.replaceState({}, '', url.toString());
 
-      if (result.gameState) {
+      if (isValidGameState(result.gameState)) {
         // Late join: game already in progress — skip lobby, go straight to game
-        setMpInitialState(result.gameState as unknown as GameState);
+        setMpInitialState(result.gameState);
         setScreen('game');
       } else {
         setScreen('lobby');
@@ -160,7 +168,12 @@ function Root() {
 
   const handleLeaveGame = async () => {
     if (multiplayerConfig) {
-      await leaveGameRoom(multiplayerConfig.roomId, multiplayerConfig.mySlot);
+      try {
+        await leaveGameRoom(multiplayerConfig.roomId, multiplayerConfig.mySlot);
+      } catch (e) {
+        console.error('Failed to mark slot as AI on leave:', e);
+        // Continue navigation regardless — local state must always clean up
+      }
     }
     setMultiplayerConfig(undefined);
     setSoloInitialState(undefined);
