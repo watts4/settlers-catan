@@ -1761,14 +1761,14 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         {/* Number token with probability dots */}
         {hasNumber && (
           <g>
-            {/* Token background circle */}
-            <circle cx={cx} cy={cy + 14} r={28} fill={hex.hasRobber ? '#333' : '#f5e6c8'} stroke="#8b6914" strokeWidth="2" />
+            {/* Token background circle — darkened when robber is present */}
+            <circle cx={cx} cy={cy + 14} r={28} fill={hex.hasRobber ? '#2c2c2c' : '#f5e6c8'} stroke={hex.hasRobber ? '#cc0000' : '#8b6914'} strokeWidth="2" />
             {/* The number */}
             <text x={cx} y={cy + 11} textAnchor="middle" fill={numColor} fontSize={isHighNumber ? '24' : '22'} fontWeight="bold" style={{ userSelect: 'none' }}>
               {hex.number}
             </text>
-            {/* Probability dots below the number */}
-            {Array.from({ length: dots }).map((_, i) => (
+            {/* Probability dots below the number (hidden when robber is here) */}
+            {!hex.hasRobber && Array.from({ length: dots }).map((_, i) => (
               <circle
                 key={i}
                 cx={cx - totalDotWidth / 2 + i * dotSpacing}
@@ -1780,9 +1780,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
           </g>
         )}
 
-        {/* Robber on desert (no number token) */}
-        {hex.hasRobber && !hasNumber && (
-          <text x={cx} y={cy + 12} textAnchor="middle" fontSize="22" style={{ userSelect: 'none' }}>☠️</text>
+        {/* Robber — prominent indicator shown on ALL hex types */}
+        {hex.hasRobber && (
+          <g>
+            <circle cx={cx} cy={cy} r={20} fill="rgba(10,10,10,0.82)" stroke="#e74c3c" strokeWidth="2.5" />
+            <text x={cx} y={cy + 8} textAnchor="middle" fontSize="20" style={{ userSelect: 'none' }}>☠️</text>
+          </g>
         )}
       </g>
     );

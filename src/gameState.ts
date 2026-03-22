@@ -90,7 +90,14 @@ export function getTotalResources(player: Player): number {
 // Distribute resources based on dice roll
 export function distributeResources(state: GameState, diceSum: number): void {
   if (diceSum === 7) return; // Robber blocks
-  
+
+  // Log when the robber is blocking a productive hex
+  state.board.hexes.forEach(hex => {
+    if (hex.number === diceSum && hex.hasRobber && hex.resource !== 'desert') {
+      addLog(state, `☠️ Robber blocked ${hex.resource} (${diceSum})`);
+    }
+  });
+
   state.board.hexes.forEach(hex => {
     if (hex.number === diceSum && !hex.hasRobber) {
       // Get all vertices on this hex by pixel distance from center
@@ -292,66 +299,64 @@ export function checkWinCondition(state: GameState): number | null {
   return null;
 }
 
-// Calculate longest road for a player
+// Calculate longest road for a player.
+// Uses a vertex-based DFS tracking which road segments have been traversed.
+// This correctly handles forks (3+ roads meeting at a junction): you can only
+// enter and exit via two of them — you cannot traverse multiple branches as if
+// teleporting between roads that merely share a vertex.
 export function calculateLongestRoad(state: GameState, playerId: number): number {
   const playerEdges = state.board.edges.filter(e => e.roads[playerId.toString()]);
   if (playerEdges.length === 0) return 0;
-  
-  // Build adjacency map
-  const adjacency = new Map<string, string[]>();
-  
-  playerEdges.forEach(edge => {
-    const key = edge.id;
-    if (!adjacency.has(key)) adjacency.set(key, []);
-    
-    // Find connected edges
-    playerEdges.forEach(other => {
-      if (other.id === edge.id) return;
-      if (edgesConnect(edge, other)) {
-        adjacency.get(key)!.push(other.id);
-      }
-    });
-  });
-  
-  // Find longest path using DFS
-  let longest = 0;
-  playerEdges.forEach(startEdge => {
-    const visited = new Set<string>();
-    const length = dfsLongestPath(startEdge.id, adjacency, visited);
-    longest = Math.max(longest, length);
-  });
-  
-  return longest;
-}
 
-// Check if two edges share a vertex using pixel coordinates
-function edgesConnect(e1: Edge, e2: Edge): boolean {
-  // Two edges connect if they share an endpoint (within 4px tolerance, squared = 16)
-  const eps = 16;
-  const d = (ax: number, ay: number, bx: number, by: number) => (ax - bx) ** 2 + (ay - by) ** 2;
-  return (
-    d(e1.x1, e1.y1, e2.x1, e2.y1) < eps ||
-    d(e1.x1, e1.y1, e2.x2, e2.y2) < eps ||
-    d(e1.x2, e1.y2, e2.x1, e2.y1) < eps ||
-    d(e1.x2, e1.y2, e2.x2, e2.y2) < eps
-  );
-}
+  const eps = 9; // squared-distance tolerance (3 px) for matching endpoints
 
-// DFS for longest path — with backtracking to correctly find longest simple path
-function dfsLongestPath(edgeId: string, adjacency: Map<string, string[]>, visited: Set<string>): number {
-  visited.add(edgeId);
-
-  const neighbors = adjacency.get(edgeId) || [];
-  let maxLen = 0;
-
-  for (const neighbor of neighbors) {
-    if (!visited.has(neighbor)) {
-      maxLen = Math.max(maxLen, dfsLongestPath(neighbor, adjacency, visited));
+  // Collect unique junction positions (road endpoints) by pixel proximity
+  const junctions: { x: number; y: number }[] = [];
+  function junctionIndex(x: number, y: number): number {
+    for (let i = 0; i < junctions.length; i++) {
+      if ((x - junctions[i].x) ** 2 + (y - junctions[i].y) ** 2 < eps) return i;
     }
+    junctions.push({ x, y });
+    return junctions.length - 1;
   }
 
-  visited.delete(edgeId); // backtrack so other starting points can use this edge
-  return 1 + maxLen;
+  // Map each road segment to its two junction indices
+  const edgeEndpoints: [number, number][] = playerEdges.map(e => [
+    junctionIndex(e.x1, e.y1),
+    junctionIndex(e.x2, e.y2),
+  ]);
+
+  // Build adjacency: junction index → list of [other_junction, edge_index]
+  const adj = new Map<number, [number, number][]>();
+  edgeEndpoints.forEach(([v1, v2], i) => {
+    if (!adj.has(v1)) adj.set(v1, []);
+    if (!adj.has(v2)) adj.set(v2, []);
+    adj.get(v1)!.push([v2, i]);
+    adj.get(v2)!.push([v1, i]);
+  });
+
+  // DFS from a junction, tracking which road segments are in use.
+  // Vertices may be revisited; road segments may not.
+  const usedEdges = new Array(playerEdges.length).fill(false);
+  function dfs(junction: number): number {
+    let maxLen = 0;
+    for (const [neighbor, edgeIdx] of (adj.get(junction) || [])) {
+      if (!usedEdges[edgeIdx]) {
+        usedEdges[edgeIdx] = true;
+        const len = 1 + dfs(neighbor);
+        usedEdges[edgeIdx] = false;
+        if (len > maxLen) maxLen = len;
+      }
+    }
+    return maxLen;
+  }
+
+  let longest = 0;
+  for (let v = 0; v < junctions.length; v++) {
+    const len = dfs(v);
+    if (len > longest) longest = len;
+  }
+  return longest;
 }
 
 // Update longest road holder
