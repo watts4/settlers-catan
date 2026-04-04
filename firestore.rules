@@ -8,14 +8,17 @@ service cloud.firestore {
       allow read: if request.auth != null
         && request.auth.uid in resource.data.authorizedUids;
 
-      // Create: authenticated user, valid initial shape
+      // Create: authenticated user, valid initial shape, and authorizedUids
+      // must contain exactly the creator's UID (others are added via arrayUnion on join)
       allow create: if request.auth != null
         && request.resource.data.status == 'waiting'
         && request.resource.data.players is list
         && request.resource.data.players.size() >= 1
         && request.resource.data.players.size() <= 4
         && request.resource.data.createdAt is number
-        && request.resource.data.updatedAt is number;
+        && request.resource.data.updatedAt is number
+        && request.resource.data.authorizedUids is list
+        && request.resource.data.authorizedUids.hasOnly([request.auth.uid]);
 
       // Update: only authorized participants may overwrite game state;
       // room id immutable, status must be valid, player list cannot be empty,
