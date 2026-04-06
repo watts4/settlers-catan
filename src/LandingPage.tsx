@@ -91,6 +91,8 @@ export default function LandingPage({
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
+      if (u?.displayName) setPlayerName(u.displayName);
+      else if (!u) setPlayerName('Player 1');
     });
     return unsub;
   }, []);
@@ -411,6 +413,27 @@ export default function LandingPage({
           <span style={{ color: COLORS.muted, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '2px' }}>Multiplayer</span>
           <div style={{ flex: 1, height: '1px', background: `linear-gradient(90deg, transparent, ${COLORS.cardBorder}, transparent)` }} />
         </div>
+
+        {/* Player name input */}
+        <input
+          type="text"
+          value={playerName}
+          onChange={(e) => setPlayerName(e.target.value.slice(0, 20))}
+          placeholder="Your name"
+          maxLength={20}
+          style={{
+            width: '100%',
+            background: 'rgba(0,0,0,0.35)',
+            border: `1px solid ${COLORS.cardBorder}`,
+            borderRadius: '6px',
+            color: COLORS.goldBright,
+            padding: '8px 10px',
+            fontSize: isMobile ? '14px' : '15px',
+            outline: 'none',
+            boxSizing: 'border-box',
+            fontFamily: "'Georgia', 'Palatino', serif",
+          }}
+        />
 
         {/* Multiplayer buttons row */}
         <div style={{ display: 'flex', gap: '10px' }}>
