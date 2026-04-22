@@ -8,25 +8,36 @@ service cloud.firestore {
       allow read: if request.auth != null
         && request.auth.uid in resource.data.authorizedUids;
 
-      // Create: authenticated user, valid initial shape
+      // Create: authenticated user, valid initial shape, host slot uid must
+      // match the caller (so the host is anchored to a real identity)
       allow create: if request.auth != null
         && request.resource.data.status == 'waiting'
         && request.resource.data.players is list
         && request.resource.data.players.size() >= 1
         && request.resource.data.players.size() <= 4
+        && request.resource.data.players[0].uid == request.auth.uid
+        && request.auth.uid in request.resource.data.authorizedUids
         && request.resource.data.createdAt is number
         && request.resource.data.updatedAt is number;
 
-      // Update: only authorized participants may overwrite game state;
-      // room id immutable, status must be valid, player list cannot be empty,
-      // and updatedAt must advance
+      // Update: only authorized participants may write;
+      // room id is immutable, status must be valid, player list cannot be empty,
+      // updatedAt must advance, host slot is pinned to its original uid,
+      // and only the host can transition status to 'playing' or 'finished'.
       allow update: if request.auth != null
         && request.auth.uid in resource.data.authorizedUids
         && request.resource.data.id == resource.data.id
         && request.resource.data.status in ['waiting', 'playing', 'finished']
         && request.resource.data.players is list
         && request.resource.data.players.size() >= 1
-        && request.resource.data.updatedAt >= resource.data.updatedAt;
+        && request.resource.data.updatedAt >= resource.data.updatedAt
+        && request.resource.data.players[0].uid == resource.data.players[0].uid
+        && (resource.data.status != 'waiting'
+            || request.resource.data.status != 'playing'
+            || request.auth.uid == resource.data.players[0].uid)
+        && (resource.data.status == 'finished'
+            || request.resource.data.status != 'finished'
+            || request.auth.uid == resource.data.players[0].uid);
 
       // No client-side deletes — cleanup is handled server-side
       allow delete: if false;

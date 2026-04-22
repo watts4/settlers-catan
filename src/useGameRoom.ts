@@ -8,7 +8,7 @@ import {
   runTransaction,
   arrayUnion,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -247,7 +247,15 @@ export async function startMultiplayerGame(
   roomId: string,
   gameState: unknown,
 ): Promise<void> {
-  await updateDoc(doc(db, 'games', roomId), {
+  const roomRef = doc(db, 'games', roomId);
+  const snapshot = await getDoc(roomRef);
+  if (!snapshot.exists()) throw new Error('Room not found');
+  const data = snapshot.data() as GameRoomData;
+  const hostUid = data.players.find((p) => p.slot === 0)?.uid;
+  if (!hostUid || auth.currentUser?.uid !== hostUid) {
+    throw new Error('Only the host can start the game');
+  }
+  await updateDoc(roomRef, {
     status: 'playing',
     gameState,
     syncId: generateId(),
@@ -269,6 +277,14 @@ export async function leaveGameRoom(roomId: string, slot: number): Promise<void>
   }
 
   const data = snapshot.data() as GameRoomData;
+
+  // A caller may only convert their own slot (or, if host, any slot).
+  const slotOwner = data.players.find((p) => p.slot === slot)?.uid;
+  const hostUid = data.players.find((p) => p.slot === 0)?.uid;
+  const myUid = auth.currentUser?.uid;
+  if (myUid !== slotOwner && myUid !== hostUid) {
+    throw new Error('Cannot leave a slot you do not own');
+  }
 
   // Mark the player's slot as AI instead of human
   const updatedPlayers = data.players.map((p) => {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { doc, runTransaction } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import type { GameRoomData, GameRoomPlayer } from './useGameRoom';
 
 interface GameLobbyProps {
@@ -90,6 +90,7 @@ export default function GameLobby({
 
   async function markSlotAsAI(slot: number) {
     if (markingAI !== null) return; // prevent rapid double-clicks
+    if (!isHost) return; // host-only (firestore rules also pin host slot)
     setMarkingAI(slot);
     try {
       const roomRef = doc(db, 'games', roomId);
@@ -97,6 +98,10 @@ export default function GameLobby({
         const snap = await transaction.get(roomRef);
         if (!snap.exists()) return;
         const data = snap.data() as GameRoomData;
+        const hostUid = data.players.find((p) => p.slot === 0)?.uid;
+        if (!hostUid || auth.currentUser?.uid !== hostUid) {
+          throw new Error('Only the host can reassign slots');
+        }
 
         const existing = data.players.find((p) => p.slot === slot);
         const aiPlayer: GameRoomPlayer = {
