@@ -145,12 +145,12 @@ export function distributeSetupResources(state: GameState, playerId: number, ver
 }
 
 // Check if a vertex is valid for settlement placement
-export function isValidSettlementPlacement(state: GameState, vertexId: string, playerId: number): boolean {
+export function isValidSettlementPlacement(state: GameState, vertexId: string, _playerId: number): boolean {
   const vertex = state.board.vertices.find(v => v.id === vertexId);
   if (!vertex) return false;
   
-  // Check if vertex is already occupied
-  if (vertex.settlements[playerId]) return false;
+  // Check if vertex is already occupied by any player
+  if (Object.values(vertex.settlements).some(Boolean)) return false;
   
   // Check distance rule - can't be adjacent to another settlement
   const neighbors = getAdjacentVertices(state, vertex);
@@ -185,8 +185,8 @@ export function isValidRoadPlacement(state: GameState, edgeId: string, playerId:
   const edge = state.board.edges.find(e => e.id === edgeId);
   if (!edge) return false;
   
-  // Check if edge is already occupied
-  if (edge.roads[playerId]) return false;
+  // Check if edge is already occupied by any player
+  if (Object.values(edge.roads).some(Boolean)) return false;
   
   // Must be connected to own road or settlement
   const connected = isEdgeConnectedToPlayer(state, edge, playerId);
@@ -391,19 +391,27 @@ export function updateLongestRoad(state: GameState): void {
 
 // Update largest army holder
 export function updateLargestArmy(state: GameState): void {
-  let maxKnights = 0;
-  let holder: number | null = null;
-  
+  const currentHolderKnights = state.largestArmyHolder !== null
+    ? state.players[state.largestArmyHolder].knightsPlayed
+    : 0;
+
+  // Challenger must strictly exceed the current holder (and meet the minimum of 3)
+  let maxKnights = Math.max(currentHolderKnights, 2); // minimum threshold is 3, so seed at 2
+  let newHolder: number | null = state.largestArmyHolder;
+
   state.players.forEach(player => {
-    if (player.knightsPlayed > maxKnights && player.knightsPlayed >= 3) {
+    if (player.knightsPlayed > maxKnights) {
       maxKnights = player.knightsPlayed;
-      holder = player.id;
+      newHolder = player.id;
     }
   });
-  
-  if (holder !== null && holder !== state.largestArmyHolder) {
-    state.largestArmyHolder = holder;
+
+  // If current holder no longer has >= 3 knights and nobody else qualifies, clear the title
+  if (newHolder !== null && state.players[newHolder].knightsPlayed < 3) {
+    newHolder = null;
   }
+
+  state.largestArmyHolder = newHolder;
 }
 
 // Get players who need to discard (have more than 7 cards)

@@ -9,21 +9,24 @@ service cloud.firestore {
         && request.auth.uid in resource.data.authorizedUids;
 
       // Create: authenticated user, valid initial shape, host slot uid must
-      // match the caller (so the host is anchored to a real identity)
+      // match the caller, and authorizedUids must contain exactly the
+      // creator's UID (others are added via arrayUnion on join).
       allow create: if request.auth != null
         && request.resource.data.status == 'waiting'
         && request.resource.data.players is list
         && request.resource.data.players.size() >= 1
         && request.resource.data.players.size() <= 4
         && request.resource.data.players[0].uid == request.auth.uid
-        && request.auth.uid in request.resource.data.authorizedUids
         && request.resource.data.createdAt is number
-        && request.resource.data.updatedAt is number;
+        && request.resource.data.updatedAt is number
+        && request.resource.data.authorizedUids is list
+        && request.resource.data.authorizedUids.hasOnly([request.auth.uid]);
 
       // Update: only authorized participants may write;
       // room id is immutable, status must be valid, player list cannot be empty,
       // updatedAt must advance, host slot is pinned to its original uid,
-      // and only the host can transition status to 'playing' or 'finished'.
+      // authorizedUids may only be extended by the caller's own uid, and
+      // only the host may transition status to 'playing' or 'finished'.
       allow update: if request.auth != null
         && request.auth.uid in resource.data.authorizedUids
         && request.resource.data.id == resource.data.id
@@ -32,6 +35,10 @@ service cloud.firestore {
         && request.resource.data.players.size() >= 1
         && request.resource.data.updatedAt >= resource.data.updatedAt
         && request.resource.data.players[0].uid == resource.data.players[0].uid
+        && request.resource.data.authorizedUids.hasAll(resource.data.authorizedUids)
+        && (request.resource.data.authorizedUids == resource.data.authorizedUids
+            || (request.resource.data.authorizedUids.size() == resource.data.authorizedUids.size() + 1
+                && request.auth.uid in request.resource.data.authorizedUids))
         && (resource.data.status != 'waiting'
             || request.resource.data.status != 'playing'
             || request.auth.uid == resource.data.players[0].uid)

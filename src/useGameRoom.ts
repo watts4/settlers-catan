@@ -74,7 +74,12 @@ export async function createGameRoom(
   playerName: string,
   uid?: string,
 ): Promise<string> {
-  const roomCode = generateRoomCode();
+  let roomCode = generateRoomCode();
+  for (let i = 0; i < 10; i++) {
+    const existing = await getDoc(doc(db, 'games', roomCode));
+    if (!existing.exists()) break;
+    roomCode = generateRoomCode();
+  }
   const sessionId = getOrCreateSessionId();
 
   const roomData: GameRoomData = {
