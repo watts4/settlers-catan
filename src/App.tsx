@@ -1987,15 +1987,21 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
       const dx = e.x2 - e.x1, dy = e.y2 - e.y1;
       const len = Math.sqrt(dx * dx + dy * dy);
       const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      // Hit area is generous (44px tall) to account for imprecise touchscreen
+      // taps. Apple's HIG recommends ≥44px touch targets.
       return (
         <g key={`spot-${e.id}`}>
           {/* Invisible large hit area */}
           <rect className="buildable-spot"
-            x={mx - len / 2 - 4} y={my - 14} width={len + 8} height={28}
+            x={mx - len / 2 - 6} y={my - 22} width={len + 12} height={44}
             transform={`rotate(${angle},${mx},${my})`}
             fill="transparent" style={{ cursor: 'pointer' }}
             onClick={ev => { ev.stopPropagation(); handler(e.id); }}
-            onPointerDown={ev => ev.stopPropagation()} />
+            onPointerDown={ev => ev.stopPropagation()}
+            onMouseDown={ev => ev.stopPropagation()}
+            onMouseUp={ev => ev.stopPropagation()}
+            onTouchStart={ev => ev.stopPropagation()}
+            onTouchEnd={ev => ev.stopPropagation()} />
           {/* Visible road highlight */}
           <line className="buildable-spot"
             x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
@@ -2012,7 +2018,11 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
         fill={fill} stroke={stroke} strokeWidth="3"
         style={{ cursor: 'pointer' }}
         onClick={e => { e.stopPropagation(); handler(v.id); }}
-        onPointerDown={e => e.stopPropagation()} />
+        onPointerDown={e => e.stopPropagation()}
+        onMouseDown={e => e.stopPropagation()}
+        onMouseUp={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
+        onTouchEnd={e => e.stopPropagation()} />
     );
 
     // Setup phase — auto-show spots for the human (my turn only in multiplayer)
@@ -2480,8 +2490,12 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               handlePanStart(e.clientX, e.clientY);
             }}
             onMouseMove={e => handlePanMove(e.clientX, e.clientY)}
-            onMouseUp={() => {
-              if (!panMoved.current && buildingMode && roadBuildingRoadsLeft === 0) {
+            onMouseUp={e => {
+              // If the pointer ended up on a buildable spot, let that spot's
+              // own onClick fire — don't cancel build mode out from under it.
+              const target = e.target as Element;
+              const onSpot = target.classList?.contains('buildable-spot');
+              if (!panMoved.current && !onSpot && buildingMode && roadBuildingRoadsLeft === 0) {
                 setBuildingMode(null);
               }
               handlePanEnd();
@@ -2535,8 +2549,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
               handlePanEnd();
             }}
             onWheel={handleZoom}
-            onClick={() => {
+            onClick={e => {
               if (panMoved.current) return; // was a drag, not a click
+              const target = e.target as Element;
+              if (target.classList?.contains('buildable-spot')) return; // spot's own handler runs
               if (buildingMode && roadBuildingRoadsLeft === 0) {
                 setBuildingMode(null);
               }
