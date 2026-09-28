@@ -59,8 +59,9 @@ function Root() {
   useEffect(() => {
     if (screen !== 'lobby' || !roomData || !multiplayerConfig) return;
     if (roomData.status === 'playing') {
-      // Non-host: grab the game state written by the host so App doesn't create a default
-      if (!multiplayerConfig.isHost && isValidGameState(roomData.gameState)) {
+      // Use the game state stored in the room so App doesn't create a default board.
+      // Applies to the host too (e.g. rejoining an in-progress game as slot 0).
+      if (isValidGameState(roomData.gameState)) {
         setMpInitialState(roomData.gameState);
       }
       setScreen('game');
@@ -162,6 +163,9 @@ function Root() {
       };
     });
     const initialState = createInitialGameState(playerConfigs);
+    // Set before the write: the local snapshot for status 'playing' can switch
+    // screens before startMultiplayerGame resolves.
+    setMpInitialState(initialState);
     await startMultiplayerGame(multiplayerConfig.roomId, initialState);
     setScreen('game');
   };
@@ -177,6 +181,7 @@ function Root() {
     }
     setMultiplayerConfig(undefined);
     setSoloInitialState(undefined);
+    setMpInitialState(undefined);
     setHasSoloSave(!!localStorage.getItem('catan_solo_save'));
     setScreen('landing');
   };
