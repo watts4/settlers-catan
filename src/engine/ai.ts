@@ -355,7 +355,7 @@ function mainTurn(s: GameState, p: number, rng: ReturnType<typeof makeRng>, nois
   }
 
   // Ask the table for a missing card, at most twice a turn.
-  if (level !== 'easy' && s.tradesThisTurn < 2 && handSize(miss) > 0 && handSize(miss) <= 2) {
+  if (level !== 'easy' && s.tradesThisTurn < 1 && handSize(miss) > 0 && handSize(miss) <= 2) {
     const spare = surplus(hand, COST[goal]);
     const giveR = RESOURCES.filter((r) => spare[r] > 0).sort((a, b) => spare[b] - spare[a])[0];
     const getR = RESOURCES.find((r) => (miss[r] ?? 0) > 0);

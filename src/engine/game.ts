@@ -34,7 +34,8 @@ export interface GameOptions {
 export type Result = { ok: true; state: GameState } | { ok: false; error: string };
 
 export function createGame(opts: GameOptions): GameState {
-  const rng = makeRng(opts.seed ?? randomSeed());
+  const seed = opts.seed ?? randomSeed();
+  const rng = makeRng(seed);
   const { hexes, ports, robber } = generateIsland(rng);
   const n = opts.players.length;
   const first = opts.firstPlayer ?? rng.int(n);
@@ -51,6 +52,7 @@ export function createGame(opts: GameOptions): GameState {
   }));
   const s: GameState = {
     schema: 2,
+    id: `g${seed.toString(36)}${Date.now().toString(36)}`,
     rng: 0,
     config: { vpToWin: opts.vpToWin ?? 10, friendlyRobber: opts.friendlyRobber ?? false },
     hexes, ports, robber,

@@ -1,49 +1,50 @@
-import type { GameState } from '../types';
+import type { GameState } from '../engine/types';
+import { longestRoadOf, piecesLeft, totalVP } from '../engine/rules';
 import type { GameRecord, WinStrategy } from './types';
 
-export function extractGameStats(game: GameState, playerIndex: number, isSolo: boolean): GameRecord {
-  const player = game.players[playerIndex];
-  const won = game.winner === playerIndex;
-
-  const settlementsBuilt = 5 - player.pieces.settlements;
-  const citiesBuilt = 4 - player.pieces.cities;
-  const roadsBuilt = 15 - player.pieces.roads;
-
-  // Count settlements and cities on the board
-  const vpFromSettlements = game.board.vertices.filter(v => v.settlements[playerIndex] === 'settlement').length;
-  const vpFromCities = game.board.vertices.filter(v => v.settlements[playerIndex] === 'city').length * 2;
-  const vpFromLongestRoad = game.longestRoadHolder === playerIndex ? 2 : 0;
-  const vpFromLargestArmy = game.largestArmyHolder === playerIndex ? 2 : 0;
-  const vpFromDevCards = player.devCards.filter(c => c === 'victory').length;
-  const finalVP = vpFromSettlements + vpFromCities + vpFromLongestRoad + vpFromLargestArmy + vpFromDevCards;
-
-  // Count dev cards played from log
-  const devCardsPlayed = game.log.filter(e => e.player === playerIndex && /played a|used/i.test(e.action)).length;
-  const devCardsBought = player.devCards.length + devCardsPlayed;
+export function extractGameStats(game: GameState, p: number, isSolo: boolean): GameRecord {
+  const player = game.players[p];
+  const won = game.winner === p;
+  const mine = Object.values(game.buildings).filter((b) => b.owner === p);
+  const vpFromSettlements = mine.filter((b) => b.kind === 'settlement').length;
+  const vpFromCities = mine.filter((b) => b.kind === 'city').length * 2;
+  const vpFromLongestRoad = game.longestRoad.holder === p ? 2 : 0;
+  const vpFromLargestArmy = game.largestArmy.holder === p ? 2 : 0;
+  const vpFromDevCards = player.devCards.filter((c) => c.kind === 'victory').length;
+  const left = piecesLeft(game, p);
 
   let winStrategy: WinStrategy | null = null;
   if (won) {
-    if (vpFromLongestRoad > 0 && vpFromLargestArmy > 0) winStrategy = 'dominator';
-    else if (vpFromLongestRoad === 0 && vpFromLargestArmy === 0 && vpFromDevCards === 0) winStrategy = 'pure_builder';
+    if (vpFromLongestRoad && vpFromLargestArmy) winStrategy = 'dominator';
+    else if (!vpFromLongestRoad && !vpFromLargestArmy && !vpFromDevCards) winStrategy = 'pure_builder';
     else if (vpFromDevCards >= 3) winStrategy = 'dev_card_heavy';
-    else if (vpFromLongestRoad > 0) winStrategy = 'road_warrior';
-    else if (vpFromLargestArmy > 0) winStrategy = 'army_commander';
+    else if (vpFromLongestRoad) winStrategy = 'road_warrior';
+    else if (vpFromLargestArmy) winStrategy = 'army_commander';
     else winStrategy = 'balanced';
   }
 
   return {
-    gameId: crypto.randomUUID(),
+    gameId: game.id,
     date: Date.now(),
-    won, finalVP, vpTarget: 10, numPlayers: game.players.length,
-    settlementsBuilt, citiesBuilt, roadsBuilt,
-    devCardsBought, devCardsPlayed, knightsPlayed: player.knightsPlayed,
-    hadLongestRoad: game.longestRoadHolder === playerIndex,
-    hadLargestArmy: game.largestArmyHolder === playerIndex,
-    longestRoadLength: player.longestRoad,
+    won,
+    finalVP: totalVP(game, p),
+    vpTarget: game.config.vpToWin,
+    numPlayers: game.players.length,
+    settlementsBuilt: player.stats.settlementsBuilt,
+    citiesBuilt: player.stats.citiesBuilt,
+    roadsBuilt: player.stats.roadsBuilt,
+    devCardsBought: player.stats.devBought,
+    devCardsPlayed: player.stats.devPlayed,
+    knightsPlayed: player.knights,
+    hadLongestRoad: !!vpFromLongestRoad,
+    hadLargestArmy: !!vpFromLargestArmy,
+    longestRoadLength: longestRoadOf(game, p),
     vpFromSettlements, vpFromCities, vpFromDevCards, vpFromLongestRoad, vpFromLargestArmy,
-    exhaustedSettlements: player.pieces.settlements === 0,
-    exhaustedCities: player.pieces.cities === 0,
-    exhaustedRoads: player.pieces.roads === 0,
-    winStrategy, totalTurns: game.turn, isSolo,
+    exhaustedSettlements: left.settlement === 0,
+    exhaustedCities: left.city === 0,
+    exhaustedRoads: left.road === 0,
+    winStrategy,
+    totalTurns: game.turn,
+    isSolo,
   };
 }

@@ -115,6 +115,7 @@ export interface SetupState {
 
 export interface GameState {
   schema: 2;
+  id: string;                // for stats, so a game is recorded once
   rng: number;               // dice and shuffles, so every client agrees
   config: GameConfig;
   hexes: HexTile[];
