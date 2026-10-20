@@ -129,6 +129,10 @@ button:disabled { cursor: not-allowed; }
 @keyframes drop { from { transform: translateY(-.5px) scale(1.8); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes roaddrop { from { transform: scale(1.6); opacity: 0; } to { transform: none; opacity: 1; } }
 
+.odds-hint circle { fill: #fffbe9e6; stroke-width: .03; animation: hint2 1.4s ease-in-out infinite; }
+.odds-hint text { font: 800 .13px var(--body); fill: #2c1f12; pointer-events: none; }
+@keyframes hint2 { 50% { fill: #fff; } }
+
 /* ── dice ────────────────────────────────────────────────────────────────── */
 .dice-spot { position: absolute; left: 16px; bottom: 16px; display: flex; align-items: center; gap: 10px; pointer-events: none; }
 .dice { display: flex; gap: 12px; perspective: 400px; }
@@ -211,6 +215,16 @@ button:disabled { cursor: not-allowed; }
 .ico.dev { background: #7c5bb5; }
 .ico.knight { width: 12px; height: 12px; border-radius: 50% 50% 2px 2px; background: #8e9ab0; }
 .ico.road { width: 14px; height: 5px; background: #a07a4f; }
+
+.rollchart .bars { display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; height: 74px; }
+.barcol { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.barbox { position: relative; flex: 1; width: 100%; }
+.bar, .bar-exp { position: absolute; bottom: 0; left: 0; right: 0; border-radius: 3px 3px 0 0; }
+.bar-exp { border: 1px dashed #ffffff40; border-bottom: none; }
+.bar { background: linear-gradient(#e9bd60, #b8862f); transition: height .5s; }
+.bar.seven { background: linear-gradient(#8a8a92, #55555c); }
+.bar.last { box-shadow: 0 0 0 2px #fff6, 0 0 10px #e9bd60; }
+.barn { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ── log and bank ────────────────────────────────────────────────────────── */
 .log { flex: 1; min-height: 0; overflow: auto; font-size: 13px; display: flex; flex-direction: column; gap: 2px; padding-right: 4px; }

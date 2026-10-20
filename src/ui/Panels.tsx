@@ -169,3 +169,32 @@ export function BankView({ state }: { state: GameState }) {
     </div>
   );
 }
+
+// How often each total has been rolled, against what the odds predict.
+export function RollChart({ state }: { state: GameState }) {
+  const rolls = state.rolls ?? {};
+  const total = Object.values(rolls).reduce((a, b) => a + b, 0);
+  const sums = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const ways = (n: number) => 6 - Math.abs(7 - n);
+  const max = Math.max(1, ...sums.map((n) => rolls[n] ?? 0), ...sums.map((n) => (total * ways(n)) / 36));
+  const last = state.dice ? state.dice.a + state.dice.b : null;
+  return (
+    <div className="rollchart" title={`${total} rolls so far. Faint bars show what the odds predict.`}>
+      <div className="bars">
+        {sums.map((n) => {
+          const got = rolls[n] ?? 0;
+          const exp = (total * ways(n)) / 36;
+          return (
+            <div key={n} className="barcol">
+              <div className="barbox">
+                <div className="bar-exp" style={{ height: `${(exp / max) * 100}%` }} />
+                <div className={`bar ${n === 7 ? 'seven' : ''} ${n === last ? 'last' : ''}`} style={{ height: `${(got / max) * 100}%` }} />
+              </div>
+              <span className="barn">{n}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

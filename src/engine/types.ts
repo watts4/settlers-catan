@@ -131,6 +131,7 @@ export interface GameState {
   phase: Phase;
   setup: SetupState | null;
   dice: { a: number; b: number } | null;
+  rolls: Record<string, number>; // how often each total has come up
   devPlayedThisTurn: boolean;
   freeRoads: number;
   afterRobber: 'roll' | 'main';

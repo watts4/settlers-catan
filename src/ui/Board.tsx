@@ -30,6 +30,7 @@ interface Props {
   onVertex(v: string): void;
   onEdge(e: string): void;
   onHex(h: number): void;
+  odds?: Record<string, number>; // production dots per corner, shown on settlement spots
 }
 
 const hexPath = (r: number) => {
@@ -41,7 +42,7 @@ const hexPath = (r: number) => {
   return pts.join(' ');
 };
 
-export const Board = forwardRef<BoardApi, Props>(function Board({ state, pick, pickColor, lit, onVertex, onEdge, onHex }, ref) {
+export const Board = forwardRef<BoardApi, Props>(function Board({ state, pick, pickColor, lit, onVertex, onEdge, onHex, odds }, ref) {
   const topo = topology(state.hexes);
   const svg = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<string | null>(null);
@@ -259,6 +260,11 @@ export const Board = forwardRef<BoardApi, Props>(function Board({ state, pick, p
             onClick={() => onVertex(v)} onMouseEnter={() => setHover(v)} onMouseLeave={() => setHover(null)}>
             {isHover ? (
               <g opacity="0.8">{pick.piece === 'city' ? <CityShape color={pickColor} /> : <SettlementShape color={pickColor} />}</g>
+            ) : odds ? (
+              <g className="odds-hint">
+                <circle r="0.13" style={{ stroke: pickColor }} />
+                <text y="0.045" textAnchor="middle">{odds[v]}</text>
+              </g>
             ) : (
               <circle r="0.1" className="vertex-hint" style={{ stroke: pickColor }} />
             )}

@@ -66,6 +66,7 @@ export function createGame(opts: GameOptions): GameState {
     phase: 'setup',
     setup: { order: [...seats, ...[...seats].reverse()], index: 0, step: 'settlement', lastVertex: null },
     dice: null,
+    rolls: {},
     devPlayedThisTurn: false,
     freeRoads: 0,
     afterRobber: 'main',
@@ -332,6 +333,8 @@ export function applyAction(prev: GameState, a: Action): Result {
       const d1 = rollDie(s), d2 = rollDie(s);
       s.dice = { a: d1, b: d2 };
       const sum = d1 + d2;
+      s.rolls = s.rolls ?? {};
+      s.rolls[sum] = (s.rolls[sum] ?? 0) + 1;
       emit(s, { kind: 'roll', player: p, a: d1, b: d2 });
       log(s, p, `${me.name} rolls ${sum}.`);
       if (sum === 7) {

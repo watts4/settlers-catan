@@ -6,11 +6,11 @@ import type { Action, DevKind, GameEvent, GameState, PartialHand, Resource } fro
 import { DEV_NAMES, waitingOn } from '../engine/game';
 import {
   COST, canAfford, citySpots, piecesLeft, playableDev, roadSpots, robberSpots, settlementSpots,
-  setupRoadSpots, stealTargets, type Buildable,
+  setupRoadSpots, stealTargets, vertexPips, type Buildable,
 } from '../engine/rules';
 import { Board, type BoardApi, type Pick } from './Board';
 import { Dice } from './Dice';
-import { BankView, BuildMenu, DevHand, GameLog, HandView, PlayerList } from './Panels';
+import { BankView, BuildMenu, DevHand, GameLog, HandView, PlayerList, RollChart } from './Panels';
 import {
   DiscardDialog, GameOverDialog, IncomingOffer, MonopolyDialog, RulesDialog, SettingsDialog, StealDialog,
   TradeDialog, YearOfPlentyDialog,
@@ -299,7 +299,8 @@ export function GameScreen({ game, onExit, onNewGame, onFinished, speed, setSpee
       </aside>
 
       <main className="boardwrap">
-        <Board ref={board} state={state} pick={pick} pickColor={meP.color} lit={lit} onVertex={onVertex} onEdge={onEdge} onHex={onHex} />
+        <Board ref={board} state={state} pick={pick} pickColor={meP.color} lit={lit} onVertex={onVertex} onEdge={onEdge} onHex={onHex}
+          odds={pick?.kind === 'vertex' && pick.piece === 'settlement' ? Object.fromEntries(pick.ids.map((v) => [v, vertexPips(state, v)])) : undefined} />
         <div className="dice-spot">
           <Dice a={state.dice?.a ?? dice.a} b={state.dice?.b ?? dice.b} rollKey={dice.key} red={!!state.dice && state.dice.a + state.dice.b === 7} />
           {state.dice && <div className="dice-sum">{state.dice.a + state.dice.b}</div>}
@@ -315,6 +316,8 @@ export function GameScreen({ game, onExit, onNewGame, onFinished, speed, setSpee
       <aside className="side right">
         <div className="panel-title">Bank</div>
         <BankView state={state} />
+        <div className="panel-title">Dice rolls</div>
+        <RollChart state={state} />
         <div className="panel-title">Game log</div>
         <GameLog state={state} me={me} />
       </aside>
