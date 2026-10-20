@@ -99,13 +99,78 @@ export const Board = forwardRef<BoardApi, Props>(function Board({ state, pick, p
     return { i, port, a, b, tx, ty };
   });
 
+  // Zoom and pan: wheel or pinch to zoom, drag to move once zoomed in. The
+  // view is a window onto the full board (vb), kept inside it.
+  const [view, setView] = useState({ z: 1, cx: 0.5, cy: 0.5 });
+  const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(null);
+  const pinch = useRef<{ d: number; z: number } | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const clamp = (v: { z: number; cx: number; cy: number }) => {
+    const z = Math.min(3, Math.max(1, v.z));
+    const half = 0.5 / z;
+    return { z, cx: Math.min(1 - half, Math.max(half, v.cx)), cy: Math.min(1 - half, Math.max(half, v.cy)) };
+  };
+  const vw = vb.w / view.z, vh = vb.h / view.z;
+  const vx = vb.x + view.cx * vb.w - vw / 2, vy = vb.y + view.cy * vb.h - vh / 2;
+  const onWheel = (e: React.WheelEvent) => {
+    const el = svg.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    // Zoom toward the pointer.
+    const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+    setView((v) => {
+      const z = Math.min(3, Math.max(1, v.z * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
+      const px = v.cx + (fx - 0.5) / v.z, py = v.cy + (fy - 0.5) / v.z;
+      return clamp({ z, cx: px - (fx - 0.5) / z, cy: py - (fy - 0.5) / z });
+    });
+  };
+  const onPointerDown = (e: React.PointerEvent) => {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = { d: Math.hypot(a.x - b.x, a.y - b.y), z: view.z };
+      drag.current = null;
+    } else {
+      drag.current = { x: e.clientX, y: e.clientY, cx: view.cx, cy: view.cy, moved: false };
+    }
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const el = svg.current;
+    if (!el) return;
+    if (pinch.current && pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      setView((v) => clamp({ ...v, z: pinch.current!.z * (d / pinch.current!.d) }));
+      return;
+    }
+    const d0 = drag.current;
+    if (!d0 || view.z <= 1) return;
+    const dx = e.clientX - d0.x, dy = e.clientY - d0.y;
+    if (!d0.moved && Math.hypot(dx, dy) < 6) return;
+    d0.moved = true;
+    const r = el.getBoundingClientRect();
+    setView((v) => clamp({ ...v, cx: d0.cx - dx / r.width / v.z, cy: d0.cy - dy / r.height / v.z }));
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+  };
+  // A drag that moved the board shouldn't also click a corner.
+  const onClickCapture = (e: React.MouseEvent) => {
+    if (drag.current?.moved) { e.stopPropagation(); drag.current = null; }
+  };
+
   const pickSet = new Set<string | number>(pick?.ids ?? []);
   const robber = topo.centers[state.robber];
   const showTokenRoll = (n: number | null) => lit !== null && n === lit;
 
   return (
-    <svg ref={svg} className="board" viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} preserveAspectRatio="xMidYMid meet"
-      role="img" aria-label="Game board">
+    <>
+    <svg ref={svg} className={`board ${view.z > 1 ? 'zoomed' : ''}`} viewBox={`${vx} ${vy} ${vw} ${vh}`} preserveAspectRatio="xMidYMid meet"
+      role="img" aria-label="Game board" onWheel={onWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onClickCapture={onClickCapture}>
       <defs>
         <radialGradient id="sea" cx="50%" cy="45%" r="70%">
           <stop offset="0%" stopColor="#2f7fa3" />
@@ -283,5 +348,11 @@ export const Board = forwardRef<BoardApi, Props>(function Board({ state, pick, p
         </g>
       )}
     </svg>
+    <div className="zoombtns">
+      <button type="button" aria-label="Zoom in" onClick={() => setView((v) => clamp({ ...v, z: v.z * 1.35 }))}>+</button>
+      <button type="button" aria-label="Zoom out" onClick={() => setView((v) => clamp({ ...v, z: v.z / 1.35 }))} disabled={view.z <= 1}>−</button>
+      {view.z > 1 && <button type="button" aria-label="Show the whole board" onClick={() => setView({ z: 1, cx: 0.5, cy: 0.5 })}>⤢</button>}
+    </div>
+    </>
   );
 });

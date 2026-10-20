@@ -100,7 +100,12 @@ button:disabled { cursor: not-allowed; }
 .panel-title { font-family: var(--display); color: var(--brass); font-size: 15px; letter-spacing: .05em; }
 
 .boardwrap { grid-area: board; position: relative; min-height: 0; overflow: hidden; background: radial-gradient(ellipse at 50% 45%, #2f7fa3, #1f5f82 55%, #133f5b); box-shadow: inset 0 0 60px #0008; }
-.board { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.board { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-select: none; touch-action: none; }
+.board.zoomed { cursor: grab; }
+.board.zoomed:active { cursor: grabbing; }
+.zoombtns { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 3; }
+.zoombtns button { width: 36px; height: 36px; border-radius: 8px; border: 1px solid #0008; background: #1d1611cc; font-size: 20px; font-weight: 700; color: var(--ink); }
+.zoombtns button:disabled { opacity: .35; }
 
 /* ── board details ───────────────────────────────────────────────────────── */
 .token-num { font-family: var(--display); font-weight: 700; fill: #2c1f12; }

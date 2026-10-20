@@ -18,7 +18,7 @@ const COLORS = {
   blue: '#2a5a8a', orange: '#c87820', wood: '#6b3410', woodLight: '#8b5e2f', woodDark: '#3a1a08',
 };
 
-const FONT = "'Georgia', 'Palatino', serif";
+const FONT = "'Alegreya Sans', 'Trebuchet MS', system-ui, sans-serif";
 
 function useIsMobile(): boolean {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
