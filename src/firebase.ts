@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -14,6 +14,13 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
+
+// Local testing: ?emu=127.0.0.1:8085 points the game at a Firestore emulator.
+const emu = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('emu') : null;
+if (emu && /^[\w.-]+:\d+$/.test(emu)) {
+  const [host, port] = emu.split(':');
+  connectFirestoreEmulator(db, host, Number(port));
+}
 export const auth = getAuth(app);
 
 /**
