@@ -113,6 +113,8 @@ function pickGoal(s: GameState, p: number): Goal {
   const cities = left.city > 0 ? citySpots(s, p) : [];
   if (settle.length) {
     if (cities.length && canAfford(hand, COST.city) && !canAfford(hand, COST.settlement)) return 'city';
+    // Strong players upgrade when a city is nearer than a settlement.
+    if (s.players[p].aiLevel === 'hard' && cities.length && missingCount(hand, COST.city) < missingCount(hand, COST.settlement)) return 'city';
     return 'settlement';
   }
   if (cities.length && (hand.ore >= 2 || hand.wheat >= 2 || left.settlement === 0)) return 'city';
@@ -163,6 +165,9 @@ export function chooseAction(s: GameState, p: number): Action | null {
   const level = pl.aiLevel;
   const rng = makeRng((s.rng ^ (s.seq * 2654435761) ^ (p * 97)) >>> 0);
   const noisy = level === 'easy';
+  // Normal plays the full strategy with a little less care than hard: a bit of
+  // randomness in where it settles and how it trades.
+  const setupNoise = level === 'easy' ? 4 : level === 'normal' ? 1.6 : 0;
 
   // Answering someone else's offer.
   if (s.trade && s.trade.from !== p && s.trade.responses[p] === 'pending') {
@@ -179,7 +184,7 @@ export function chooseAction(s: GameState, p: number): Action | null {
       const st = s.setup!;
       if (st.step === 'settlement') {
         const spots = settlementSpots(s, p, true);
-        const scored = spots.map((v) => ({ v, val: spotValue(s, p, v, true) + (noisy ? rng.next() * 4 : 0) }))
+        const scored = spots.map((v) => ({ v, val: spotValue(s, p, v, true) + rng.next() * setupNoise }))
           .sort((a, b) => b.val - a.val);
         return { type: 'placeSettlement', player: p, vertex: scored[0].v };
       }
@@ -227,7 +232,8 @@ function shouldKnight(s: GameState, p: number): boolean {
   const t = topo(s);
   const mine = t.hexCorners[s.robber].some((v) => s.buildings[v]?.owner === p);
   const hex = s.hexes[s.robber];
-  if (mine && hex.number && (PIPS[hex.number] ?? 0) >= 3) return true;
+  const hard = s.players[p].aiLevel === 'hard';
+  if (mine && hex.number && (PIPS[hex.number] ?? 0) >= (hard ? 2 : 3)) return true;
   const k = s.players[p].knights + 1;
   if (k >= 3 && s.largestArmy.holder !== p && k > s.largestArmy.size) return true;
   return false;
@@ -280,11 +286,11 @@ function wantsTrade(s: GameState, p: number, theyGive: PartialHand, theyGet: Par
   const hand = s.players[p].hand;
   if (!RESOURCES.every((r) => hand[r] >= (theyGet[r] ?? 0))) return false;
   // Don't feed someone who's about to win.
-  if (publicVP(s, from) >= s.config.vpToWin - 2) return false;
+  const level = s.players[p].aiLevel;
+  if (publicVP(s, from) >= s.config.vpToWin - (level === 'hard' ? 3 : 2)) return false;
   const w = wants(s, p);
   const gain = value(theyGive, w), loss = value(theyGet, w);
-  const level = s.players[p].aiLevel;
-  const margin = level === 'hard' ? 0.6 : level === 'easy' ? -0.3 : 0.2;
+  const margin = level === 'hard' ? 0.3 : level === 'easy' ? -0.3 : 0.2;
   return gain - loss > margin;
 }
 
@@ -349,7 +355,7 @@ function mainTurn(s: GameState, p: number, rng: ReturnType<typeof makeRng>, nois
   }
 
   // Trade toward the goal with the bank or a harbour.
-  if (!(noisy && rng.next() < 0.3)) {
+  if (!(noisy && rng.next() < 0.3) && !(level === 'normal' && rng.next() < 0.15)) {
     const bank = bankTradeToward(s, p, COST[goal]);
     if (bank) return bank;
   }
@@ -437,10 +443,12 @@ function bankTradeToward(s: GameState, p: number, cost: PartialHand): Action | n
   if (!need) return null;
   const rates = tradeRates(s, p);
   const spare = surplus(hand, cost);
-  // Only trade if the whole goal becomes reachable this turn.
+  // Only trade if the whole goal becomes reachable this turn. Strong players
+  // also trade part of the way when a big hand is at risk from a seven.
   let budget = 0;
   for (const r of RESOURCES) budget += Math.floor(spare[r] / rates[r]);
-  if (budget < handSize(miss)) return null;
+  const risky = s.players[p].aiLevel === 'hard' && handSize(hand) >= 7;
+  if (budget < handSize(miss) && !(risky && budget >= 1)) return null;
   const give = RESOURCES.filter((r) => spare[r] >= rates[r])
     .sort((a, b) => spare[b] / rates[b] - spare[a] / rates[a])[0];
   if (!give) return null;
