@@ -6,7 +6,7 @@ export type Sfx =
   | 'dice' | 'build' | 'road' | 'city' | 'gain' | 'robber' | 'steal' | 'card' | 'trade'
   | 'turn' | 'win' | 'lose' | 'error' | 'click' | 'seven' | 'award' | 'discard';
 
-interface Settings { sfx: number; music: number }
+interface Settings { sfx: number; music: number; muted?: boolean }
 const KEY = 'catan_sound';
 
 class SoundEngine {
@@ -27,15 +27,30 @@ class SoundEngine {
 
   get sfxVolume() { return this.settings.sfx; }
   get musicVolume() { return this.settings.music; }
+  get muted() { return !!this.settings.muted; }
+
+  // Mute silences effects and music but keeps the chosen volumes.
+  setMuted(m: boolean) {
+    this.settings = { ...this.settings, muted: m };
+    localStorage.setItem(KEY, JSON.stringify(this.settings));
+    this.apply();
+    this.listeners.forEach((f) => f());
+  }
+
+  private apply() {
+    const m = this.settings.muted ? 0 : 1;
+    if (this.sfxBus) this.sfxBus.gain.value = this.settings.sfx * m;
+    if (this.musicBus) this.musicBus.gain.value = this.settings.music * 0.5 * m;
+    if (this.settings.music > 0 && !this.settings.muted) this.startMusic(); else this.stopMusic();
+  }
 
   subscribe(f: () => void) { this.listeners.add(f); return () => { this.listeners.delete(f); }; }
 
   setVolumes(v: Partial<Settings>) {
-    this.settings = { ...this.settings, ...v };
+    // Moving a slider unmutes.
+    this.settings = { ...this.settings, ...v, muted: false };
     localStorage.setItem(KEY, JSON.stringify(this.settings));
-    if (this.sfxBus) this.sfxBus.gain.value = this.settings.sfx;
-    if (this.musicBus) this.musicBus.gain.value = this.settings.music * 0.5;
-    if (this.settings.music > 0) this.startMusic(); else this.stopMusic();
+    this.apply();
     this.listeners.forEach((f) => f());
   }
 
@@ -52,17 +67,17 @@ class SoundEngine {
       comp.ratio.value = 4;
       this.master.connect(comp).connect(this.ctx.destination);
       this.sfxBus = this.ctx.createGain();
-      this.sfxBus.gain.value = this.settings.sfx;
+      this.sfxBus.gain.value = this.settings.muted ? 0 : this.settings.sfx;
       this.sfxBus.connect(this.master);
       this.musicBus = this.ctx.createGain();
-      this.musicBus.gain.value = this.settings.music * 0.5;
+      this.musicBus.gain.value = this.settings.muted ? 0 : this.settings.music * 0.5;
       this.musicBus.connect(this.master);
       this.verb = this.ctx.createConvolver();
       this.verb.buffer = this.impulse(2.2, 2.5);
       const wet = this.ctx.createGain();
       wet.gain.value = 0.22;
       this.verb.connect(wet).connect(this.master);
-      if (this.settings.music > 0) this.startMusic();
+      if (this.settings.music > 0 && !this.settings.muted) this.startMusic();
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume();
   }
@@ -147,7 +162,7 @@ class SoundEngine {
   // ── the sounds ────────────────────────────────────────────────────────────
 
   play(name: Sfx, opts: { count?: number } = {}) {
-    if (!this.ctx || this.settings.sfx <= 0) return;
+    if (!this.ctx || this.settings.sfx <= 0 || this.settings.muted) return;
     const t = this.ctx.currentTime + 0.01;
     switch (name) {
       case 'dice': {

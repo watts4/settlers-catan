@@ -14,8 +14,10 @@ import { createRoom, forgetRoom, joinRoom, leaveRoom, rememberedRoom, useRoom } 
 import ProfilePage from '../ProfilePage';
 import { extractGameStats } from '../stats/extractGameStats';
 import { recordGameAndUpdateStats } from '../stats/statsService';
+import { handoverReason, useHandover } from './hotseat';
+import { Curtain } from './Curtain';
 
-const AI_NAMES = ['Hildeguard', 'Steve', 'Tammy'];
+const AI_NAMES = ['Hildeguard', 'Steve', 'Tammy', 'Oswin', 'Marigold'];
 const SPEED_KEY = 'catan2_speed';
 
 type Screen =
@@ -31,12 +33,27 @@ function loadSave(): GameState | null {
   } catch { return null; }
 }
 
+// Options for "Play again" after a resumed game, read back from the save.
+function savedOptions(s: GameState): SoloOptions {
+  let level: SoloOptions['level'] = 'normal';
+  const ai = s.players.find((p) => p.controller === 'ai');
+  if (ai) level = ai.aiLevel;
+  const color = Math.max(0, PLAYER_COLORS.indexOf(s.players[0].color));
+  const people = s.players.slice(1).filter((p) => p.controller === 'human').map((p) => p.name);
+  return { name: s.players[0].name, people, opponents: s.players.length - 1 - people.length, level, vpToWin: s.config.vpToWin, friendlyRobber: s.config.friendlyRobber, color };
+}
+
 function newSolo(o: SoloOptions): GameState {
   const others = PLAYER_COLORS.slice(0, 4).filter((_, i) => i !== o.color);
+  const people = (o.people ?? []).slice(0, 3);
+  const taken = [o.name, ...people].map((n) => n.trim().toLowerCase());
   return createGame({
     players: [
       { name: o.name, controller: 'human', color: PLAYER_COLORS[o.color] },
-      ...AI_NAMES.slice(0, o.opponents).map((name, i) => ({ name, controller: 'ai' as const, aiLevel: o.level, color: others[i] })),
+      ...people.map((name, i) => ({ name, controller: 'human' as const, color: others[i] })),
+      // Computers never share your name, so the log stays readable.
+      ...AI_NAMES.filter((n) => !taken.includes(n.toLowerCase())).slice(0, Math.min(o.opponents, 3 - people.length))
+        .map((name, i) => ({ name, controller: 'ai' as const, aiLevel: o.level, color: others[people.length + i] })),
     ],
     vpToWin: o.vpToWin,
     friendlyRobber: o.friendlyRobber,
@@ -62,8 +79,20 @@ function SoloGame({ screen, onExit, onNew, speed, setSpeed, user }: {
   screen: Extract<Screen, { kind: 'solo' }>; onExit(): void; onNew?: () => void; speed: number; setSpeed(n: number): void; user: User | null;
 }) {
   const game = useLocalGame(screen.state, screen.me, speed);
+  // Pass and play: with several people at one screen, show whoever must act.
+  const shared = screen.state.players.filter((p) => p.controller === 'human').length > 1;
+  const hand = useHandover(game.state, shared);
+  const me = hand.seat ?? game.me;
   const onFinished = useCallback((s: GameState) => { void recordStats(user, s, screen.me, true); }, [user, screen.me]);
-  return <GameScreen game={game} onExit={onExit} onNewGame={onNew} onFinished={onFinished} speed={speed} setSpeed={setSpeed} />;
+  return (
+    <>
+      <GameScreen game={{ ...game, me }} onExit={onExit} onNewGame={onNew} onFinished={onFinished} speed={speed} setSpeed={setSpeed} />
+      {hand.curtain && game.state && hand.seat !== null && (
+        <Curtain name={game.state.players[hand.seat].name} color={game.state.players[hand.seat].color}
+          reason={handoverReason(game.state, hand.seat)} onReveal={hand.reveal} />
+      )}
+    </>
+  );
 }
 
 function RoomScreen({ roomId, slot, onExit, speed, setSpeed, user }: { roomId: string; slot: number; onExit(): void; speed: number; setSpeed(n: number): void; user: User | null }) {
@@ -113,7 +142,7 @@ export default function App() {
       hasSave={!!save}
       savedSummary={save ? `turn ${save.turn}, ${totalVP(save, 0)} points` : null}
       onSolo={(o) => { localStorage.removeItem(SOLO_SAVE); setScreen({ kind: 'solo', state: newSolo(o), me: 0, opts: o }); }}
-      onResume={() => save && setScreen({ kind: 'solo', state: save, me: 0 })}
+      onResume={() => save && setScreen({ kind: 'solo', state: save, me: 0, opts: savedOptions(save) })}
       onDiscardSave={() => { localStorage.removeItem(SOLO_SAVE); setSave(null); }}
       onCreate={async (name) => {
         try {

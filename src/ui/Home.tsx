@@ -11,6 +11,7 @@ import { HeroIsland } from './HeroIsland';
 
 export interface SoloOptions {
   name: string;
+  people?: string[]; // other people playing on this device
   opponents: number;
   level: AiLevel;
   vpToWin: number;
@@ -44,6 +45,7 @@ export function Home(props: Props) {
   const [vpToWin, setVp] = useState<number>(saved.vpToWin ?? 10);
   const [friendly, setFriendly] = useState<boolean>(saved.friendlyRobber ?? false);
   const [color, setColor] = useState<number>(saved.color ?? 0);
+  const [people, setPeople] = useState<string[]>(saved.people ?? []);
   const [code, setCode] = useState(props.initialCode ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -56,7 +58,7 @@ export function Home(props: Props) {
   const finalName = name.trim() || 'You';
   const remember = () => {
     localStorage.setItem(NAME_KEY, name.trim());
-    localStorage.setItem(OPTS_KEY, JSON.stringify({ opponents, level, vpToWin, friendlyRobber: friendly, color }));
+    localStorage.setItem(OPTS_KEY, JSON.stringify({ opponents, level, vpToWin, friendlyRobber: friendly, color, people }));
     sound.unlock();
   };
 
@@ -68,7 +70,7 @@ export function Home(props: Props) {
         <HeroIsland />
         <div className="home-title">
           <h1>Settlers<span>of Catan</span></h1>
-          <p>Build roads, raise cities, and outtrade three rivals for control of the island.</p>
+          <p>Build roads, raise cities, and outtrade your rivals for control of the island.</p>
         </div>
       </div>
 
@@ -88,10 +90,25 @@ export function Home(props: Props) {
               ))}
             </div>
           </div>
+          <div className="people">
+            {people.map((p, i) => (
+              <div key={i} className="field person">
+                <label htmlFor={`person${i}`}>Player {i + 2}</label>
+                <input id={`person${i}`} value={p} maxLength={16} placeholder={`Player ${i + 2}`}
+                  onChange={(e) => setPeople(people.map((x, j) => (j === i ? e.target.value : x)))} />
+                <button type="button" className="x" aria-label={`Remove player ${i + 2}`} onClick={() => setPeople(people.filter((_, j) => j !== i))}>✕</button>
+              </div>
+            ))}
+            {people.length < 3 && (
+              <button type="button" className="linkbtn" onClick={() => setPeople([...people, ''])}>+ Add someone playing on this device</button>
+            )}
+          </div>
           <div className="field">
-            <span className="flabel">Opponents</span>
+            <span className="flabel">Computer opponents</span>
             <div className="seg">
-              {[2, 3].map((n) => <button key={n} type="button" className={opponents === n ? 'on' : ''} onClick={() => setOpponents(n)}>{n}</button>)}
+              {[0, 1, 2, 3].filter((n) => n + people.length <= 3 && n + people.length >= 1).map((n) => (
+                <button key={n} type="button" className={Math.min(opponents, 3 - people.length) === n ? 'on' : ''} onClick={() => setOpponents(n)}>{n}</button>
+              ))}
             </div>
           </div>
           <div className="field">
@@ -114,7 +131,9 @@ export function Home(props: Props) {
           </label>
           <button type="button" className="btn primary big wide" onClick={() => {
             remember();
-            props.onSolo({ name: finalName, opponents, level, vpToWin, friendlyRobber: friendly, color });
+            const others = people.map((p, i) => p.trim() || `Player ${i + 2}`);
+            const opp = Math.max(people.length ? 0 : 1, Math.min(opponents, 3 - people.length));
+            props.onSolo({ name: finalName, people: others, opponents: opp, level, vpToWin, friendlyRobber: friendly, color });
           }}>New game</button>
           {props.hasSave && (
             <div className="resume">

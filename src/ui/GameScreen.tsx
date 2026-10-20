@@ -36,15 +36,22 @@ export function GameScreen({ game, onExit, onNewGame, onFinished, speed, setSpee
   const { state, me, dispatch } = game;
   const board = useRef<BoardApi>(null);
   const fly = useRef<FlyApi>(null);
-  const [rawMode, setMode] = useState<Buildable | null>(null);
-  // Build mode only means something on your own turn after rolling.
-  const mode = state && state.phase === 'main' && state.current === me ? rawMode : null;
+  const [modeState, setModeState] = useState<{ mode: Buildable | null; turn: number }>({ mode: null, turn: -1 });
+  // Build mode only means something on your own turn after rolling, and only
+  // for the turn it was chosen in.
+  const mode = state && state.phase === 'main' && state.current === me && modeState.turn === state.turn ? modeState.mode : null;
+  const setMode = useCallback((m: Buildable | null | ((prev: Buildable | null) => Buildable | null)) => {
+    setModeState((prev) => {
+      const cur = state && prev.turn === state.turn ? prev.mode : null;
+      return { mode: typeof m === 'function' ? m(cur) : m, turn: state?.turn ?? -1 };
+    });
+  }, [state]);
   const [dialog, setDialog] = useState<null | 'trade' | 'rules' | 'settings' | 'yop' | 'monopoly' | 'gameover' | 'log'>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [dice, setDice] = useState<{ a: number; b: number; key: number }>({ a: 3, b: 4, key: 0 });
   const [lit, setLit] = useState<number | null>(null);
   const [confetti, setConfetti] = useState(0);
-  const [muted, setMuted] = useState(sound.sfxVolume === 0);
+  const [muted, setMuted] = useState(sound.muted);
   const lastSeq = useRef<number | null>(null);
   const toastId = useRef(1);
 
@@ -208,15 +215,17 @@ export function GameScreen({ game, onExit, onNewGame, onFinished, speed, setSpee
     const k = (ev: KeyboardEvent) => {
       if (!state || dialog || (ev.target as HTMLElement)?.tagName === 'INPUT') return;
       const myTurn = state.current === me;
-      if (ev.key === 'Escape') setMode(null);
+      const key = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+      if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      if (key === 'Escape') setMode(null);
       if (!myTurn) return;
-      if ((ev.key === 'r' || ev.key === ' ') && state.phase === 'roll') { ev.preventDefault(); void act({ type: 'roll', player: me }); }
-      if (ev.key === 'e' && state.phase === 'main' && !state.trade) void act({ type: 'endTurn', player: me });
-      if (ev.key === 't' && state.phase === 'main') setDialog('trade');
+      if ((key === 'r' || key === ' ') && state.phase === 'roll') { ev.preventDefault(); void act({ type: 'roll', player: me }); }
+      if (key === 'e' && state.phase === 'main' && !state.trade) void act({ type: 'endTurn', player: me });
+      if (key === 't' && state.phase === 'main') setDialog('trade');
     };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [state, me, dialog, act]);
+  }, [state, me, dialog, act, setMode]);
 
   if (!state) {
     return <div className="center-msg">{game.error ?? 'Connecting to the game…'}</div>;
@@ -286,7 +295,7 @@ export function GameScreen({ game, onExit, onNewGame, onFinished, speed, setSpee
             sound.unlock();
             const m = !muted;
             setMuted(m);
-            sound.setVolumes({ sfx: m ? 0 : 0.8 });
+            sound.setMuted(m);
           }}>{muted ? '🔇' : '🔊'}</button>
           <button type="button" className="iconbtn" title="Settings" onClick={() => setDialog('settings')}>⚙</button>
           <button type="button" className="iconbtn" title="How to play" onClick={() => setDialog('rules')}>?</button>
@@ -311,6 +320,10 @@ export function GameScreen({ game, onExit, onNewGame, onFinished, speed, setSpee
           ))}
         </div>
         <IncomingOffer state={state} me={me} dispatch={act} />
+        <button type="button" className="logfab" onClick={() => setDialog('log')} aria-label="Game log">📜</button>
+        {state.phase === 'gameOver' && dialog !== 'gameover' && (
+          <button type="button" className="btn primary results" onClick={() => setDialog('gameover')}>Results</button>
+        )}
       </main>
 
       <aside className="side right">
@@ -351,12 +364,10 @@ export function GameScreen({ game, onExit, onNewGame, onFinished, speed, setSpee
         </div>
       </footer>
 
-      <button type="button" className="logfab" onClick={() => setDialog('log')} aria-label="Game log">📜</button>
-
       <FlyLayer ref={fly} />
       <Confetti run={confetti} />
 
-      {due > 0 && <DiscardDialog key={`d${state.seq}`} state={state} me={me} due={due} dispatch={act} />}
+      {due > 0 && <DiscardDialog key={`d${state.turn}`} state={state} me={me} due={due} dispatch={act} />}
       {stealing && <StealDialog state={state} targets={stealTargets(state, state.robber, me)} onPick={(p) => act({ type: 'steal', player: me, victim: p })} />}
       {dialog === 'trade' && mainMine && <TradeDialog state={state} me={me} onClose={() => setDialog(null)} dispatch={act} />}
       {dialog === 'yop' && (
@@ -365,8 +376,8 @@ export function GameScreen({ game, onExit, onNewGame, onFinished, speed, setSpee
       {dialog === 'monopoly' && (
         <MonopolyDialog onClose={() => setDialog(null)} onPick={(res) => { setDialog(null); void act({ type: 'playMonopoly', player: me, res }); }} />
       )}
-      {dialog === 'rules' && <RulesDialog onClose={() => setDialog(null)} />}
-      {dialog === 'settings' && <SettingsDialog speed={speed} setSpeed={setSpeed} onClose={() => { setDialog(null); setMuted(sound.sfxVolume === 0); }} />}
+      {dialog === 'rules' && <RulesDialog vpToWin={state.config.vpToWin} onClose={() => setDialog(null)} />}
+      {dialog === 'settings' && <SettingsDialog speed={speed} setSpeed={setSpeed} onClose={() => { setDialog(null); setMuted(sound.muted); }} />}
       {dialog === 'gameover' && state.phase === 'gameOver' && (
         <GameOverDialog state={state} me={me} onNew={onNewGame} onMenu={onExit} onClose={() => setDialog(null)} />
       )}

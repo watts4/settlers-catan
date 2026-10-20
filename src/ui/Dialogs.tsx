@@ -30,7 +30,8 @@ export function Modal({ title, children, onClose, wide }: { title: string; child
   );
 }
 
-function Stepper({ hand, setHand, max, label }: { hand: PartialHand; setHand(h: PartialHand): void; max?: Partial<Record<Resource, number>>; label: string }) {
+function Stepper({ hand, setHand, max, label, total }: { hand: PartialHand; setHand(h: PartialHand): void; max?: Partial<Record<Resource, number>>; label: string; total?: number }) {
+  const full = total !== undefined && handSize(hand) >= total;
   return (
     <div className="stepper" aria-label={label}>
       {RESOURCES.map((r) => {
@@ -38,7 +39,7 @@ function Stepper({ hand, setHand, max, label }: { hand: PartialHand; setHand(h: 
         const cap = max?.[r] ?? 19;
         return (
           <div key={r} className="step">
-            <button type="button" className="step-card" disabled={n >= cap} onClick={() => setHand({ ...hand, [r]: n + 1 })} title={`Add ${RES_LABEL[r]}`}>
+            <button type="button" className="step-card" disabled={n >= cap || full} onClick={() => setHand({ ...hand, [r]: n + 1 })} title={`Add ${RES_LABEL[r]}`}>
               <ResourceIcon res={r} size={30} />
               <span className="step-n">{n}</span>
             </button>
@@ -129,7 +130,7 @@ export function TradeDialog({ state, me, onClose, dispatch }: {
                 <span>{state.players[+k].name}</span>
                 <span className={`resp ${v}`}>{v === 'pending' ? 'thinking…' : v === 'accept' ? 'accepts' : 'declines'}</span>
                 {v === 'accept' && (
-                  <button type="button" className="btn primary small" onClick={async () => { const e = await dispatch({ type: 'acceptTrade', player: me, partner: +k }); setErr(e); if (!e) sound.play('trade'); }}>
+                  <button type="button" className="btn primary small" onClick={async () => { const e = await dispatch({ type: 'acceptTrade', player: me, partner: +k }); setErr(e); if (!e) { sound.play('trade'); setOfferGive({}); setOfferGet({}); } }}>
                     Trade with {state.players[+k].name}
                   </button>
                 )}
@@ -138,7 +139,7 @@ export function TradeDialog({ state, me, onClose, dispatch }: {
           </ul>
           <div className="row end">
             {err && <span className="err">{err}</span>}
-            <button type="button" className="btn" onClick={() => dispatch({ type: 'cancelTrade', player: me })}>Withdraw offer</button>
+            <button type="button" className="btn" onClick={async () => { const e = await dispatch({ type: 'cancelTrade', player: me }); if (!e) { setOfferGive({}); setOfferGet({}); } }}>Withdraw offer</button>
           </div>
         </div>
       ) : (
@@ -149,7 +150,7 @@ export function TradeDialog({ state, me, onClose, dispatch }: {
           <Stepper hand={offerGet} setHand={setOfferGet} label="You want" />
           <div className="row end">
             {err && <span className="err">{err}</span>}
-            <button type="button" className="btn primary" disabled={!handSize(offerGive) || !handSize(offerGet)} onClick={doOffer}>Offer to everyone</button>
+            <button type="button" className="btn primary" disabled={!handSize(offerGive) || !handSize(offerGet) || RESOURCES.some((r) => (offerGive[r] ?? 0) > hand[r])} onClick={doOffer}>Offer to everyone</button>
           </div>
         </div>
       )}
@@ -189,7 +190,7 @@ export function DiscardDialog({ state, me, due, dispatch }: { state: GameState; 
   return (
     <Modal title={`Discard ${due} cards`}>
       <p>A seven was rolled and you hold {handSize(state.players[me].hand)} cards. Choose {due} to give back to the bank.</p>
-      <Stepper hand={pick} setHand={setPick} max={state.players[me].hand} label="Discard" />
+      <Stepper hand={pick} setHand={setPick} max={state.players[me].hand} label="Discard" total={due} />
       <div className="row end">
         <span className={n === due ? 'ok' : 'muted'}>{n} / {due}</span>
         <button type="button" className="btn primary" disabled={n !== due} onClick={() => { sound.play('discard'); void dispatch({ type: 'discard', player: me, cards: pick }); }}>Discard</button>
@@ -221,7 +222,7 @@ export function YearOfPlentyDialog({ state, onPick, onClose }: { state: GameStat
   return (
     <Modal title="Year of Plenty" onClose={onClose}>
       <p>Take any two resources from the bank.</p>
-      <Stepper hand={pick} setHand={setPick} max={Object.fromEntries(RESOURCES.map((r) => [r, Math.min(2, state.bank[r])]))} label="Take" />
+      <Stepper hand={pick} setHand={setPick} max={Object.fromEntries(RESOURCES.map((r) => [r, Math.min(2, state.bank[r])]))} label="Take" total={2} />
       <div className="row end">
         <span className={n === 2 ? 'ok' : 'muted'}>{n} / 2</span>
         <button type="button" className="btn primary" disabled={n !== 2} onClick={() => onPick(pick)}>Take them</button>
@@ -251,6 +252,7 @@ export function GameOverDialog({ state, me, onNew, onMenu, onClose }: { state: G
   return (
     <Modal title={won ? 'You win!' : `${state.players[state.winner ?? 0].name} wins`} onClose={onClose} wide>
       <p className="gameover-sub">{won ? 'The island is yours.' : 'Better luck on the next island.'} The game took {state.turn} turns.</p>
+      <div className="scores-wrap">
       <table className="scores">
         <thead>
           <tr><th>Player</th><th>Points</th><th>Settl.</th><th>Cities</th><th>VP cards</th><th>Road</th><th>Army</th><th>Cards earned</th></tr>
@@ -274,6 +276,7 @@ export function GameOverDialog({ state, me, onNew, onMenu, onClose }: { state: G
           })}
         </tbody>
       </table>
+      </div>
       <div className="row end">
         <button type="button" className="btn" onClick={onClose}>Look at the board</button>
         <button type="button" className="btn" onClick={onMenu}>Main menu</button>
@@ -283,13 +286,13 @@ export function GameOverDialog({ state, me, onNew, onMenu, onClose }: { state: G
   );
 }
 
-export function RulesDialog({ onClose }: { onClose(): void }) {
+export function RulesDialog({ onClose, vpToWin = 10 }: { onClose(): void; vpToWin?: number }) {
   return (
     <Modal title="How to play" onClose={onClose} wide>
       <div className="rules">
         <section>
           <h3>Goal</h3>
-          <p>Be first to 10 victory points on your own turn. Settlements are worth 1, cities 2, Longest Road and Largest Army 2 each, and Victory Point cards 1.</p>
+          <p>Be first to {vpToWin} victory points on your own turn. Settlements are worth 1, cities 2, Longest Road and Largest Army 2 each, and Victory Point cards 1.</p>
         </section>
         <section>
           <h3>Setup</h3>

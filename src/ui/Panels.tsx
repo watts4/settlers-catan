@@ -35,7 +35,7 @@ export function PlayerList({ state, me, waiting }: { state: GameState; me: numbe
             style={{ '--pc': p.color } as React.CSSProperties}>
             <div className="player-top">
               <span className="swatch" />
-              <span className="pname">{p.name}{i === me && <span className="you"> (you)</span>}</span>
+              <span className="pname">{p.name}{i === me && p.name !== 'You' && <span className="you"> (you)</span>}</span>
               {p.controller === 'ai' && <span className="tag" title={`Computer, ${p.aiLevel}`}>CPU</span>}
               {waiting.includes(i) && !isTurn && <span className="thinking" title="Waiting on this player">…</span>}
               <span className="vp" title={hidden ? `${vp} points, including ${hidden} hidden` : `${vp} points`}>
@@ -134,7 +134,7 @@ function personal(text: string, name: string): string {
     const sp = rest.indexOf(' ');
     const verb = sp < 0 ? rest : rest.slice(0, sp);
     const base = verb === 'goes' ? 'go' : verb.endsWith('s') && !verb.endsWith('ss') ? verb.slice(0, -1) : verb;
-    t = `You ${base}${sp < 0 ? '' : rest.slice(sp)}`;
+    t = `You ${base}${sp < 0 ? '' : rest.slice(sp)}`.replace(' and collects ', ' and collect ');
   }
   return t.replace(new RegExp(`\\b(robs|to|from) ${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'), '$1 you');
 }

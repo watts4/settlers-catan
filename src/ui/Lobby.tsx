@@ -20,7 +20,7 @@ export function Lobby({ room, me, onLeave }: { room: Room; me: number; onLeave()
       const seat = room.players.find((p) => p.slot === slot && p.isHuman);
       return seat
         ? { name: seat.name, controller: 'human' as const, color: PLAYER_COLORS[slot] }
-        : { name: ['Hildeguard', 'Steve', 'Tammy', 'Oswin'][slot], controller: 'ai' as const, aiLevel: level, color: PLAYER_COLORS[slot] };
+        : { name: ['Hildeguard', 'Steve', 'Tammy', 'Oswin'].filter((n) => !room.players.some((p) => p.isHuman && p.name.toLowerCase() === n.toLowerCase()))[slot % 3], controller: 'ai' as const, aiLevel: level, color: PLAYER_COLORS[slot] };
     });
     const state = createGame({ players, vpToWin: opts.vpToWin, friendlyRobber: opts.friendlyRobber });
     try { await startRoom(room.id, state); } finally { setBusy(false); }

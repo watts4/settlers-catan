@@ -85,7 +85,8 @@ export function useAiDriver(state: GameState | null, dispatch: (a: Action) => Pr
     if (!planned) return;
     // A dice roll needs time to land before the next move.
     const afterRoll = state.events.length && state.events[state.events.length - 1].kind === 'roll' ? 900 : 0;
-    const delay = (wait || (PACE[planned.type] ?? 600) + afterRoll) / Math.max(0.25, speed);
+    // People get the same time to answer a trade offer at any speed.
+    const delay = wait || ((PACE[planned.type] ?? 600) + afterRoll) / Math.max(0.25, speed);
     const timer = window.setTimeout(async () => {
       if (busy.current) return;
       busy.current = true;

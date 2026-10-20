@@ -103,7 +103,7 @@ button:disabled { cursor: not-allowed; }
 .board { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-select: none; touch-action: none; }
 .board.zoomed { cursor: grab; }
 .board.zoomed:active { cursor: grabbing; }
-.zoombtns { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; z-index: 3; }
+.zoombtns { position: absolute; left: 10px; top: 10px; display: flex; gap: 6px; z-index: 3; }
 .zoombtns button { width: 36px; height: 36px; border-radius: 8px; border: 1px solid #0008; background: #1d1611cc; font-size: 20px; font-weight: 700; color: var(--ink); }
 .zoombtns button:disabled { opacity: .35; }
 
@@ -299,6 +299,8 @@ button:disabled { cursor: not-allowed; }
 .mainbtns { display: flex; gap: 8px; align-items: center; }
 
 .logfab { display: none; }
+.results { position: absolute; right: 14px; bottom: 14px; z-index: 4; }
+.scores-wrap { overflow-x: auto; }
 
 /* ── effects ─────────────────────────────────────────────────────────────── */
 .fly-layer { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
@@ -405,6 +407,16 @@ select, input[type=text], input:not([type]) {
 .account { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .home-foot { color: #8d7d63; font-size: 12px; }
 
+.people { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.person { width: 100%; }
+.person input { flex: 1; }
+.curtain { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px;
+  background: radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--pc) 30%, #1a1410), #0e0b08 75%); }
+.curtain-card { text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; max-width: 360px; }
+.curtain-card h2 { font-family: var(--display); font-size: 44px; margin: 0; color: var(--ink); }
+.curtain-card p { margin: 0 0 8px; }
+.curtain-dot { width: 54px; height: 54px; border-radius: 50%; background: var(--pc); border: 3px solid #0008; box-shadow: 0 0 30px var(--pc); }
+
 /* ── lobby ───────────────────────────────────────────────────────────────── */
 .lobby { height: 100dvh; overflow: auto; display: grid; place-items: center; padding: 16px; }
 .lobby-card { width: min(520px, 100%); background: linear-gradient(var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 10px 30px #0006; }
@@ -420,7 +432,8 @@ select, input[type=text], input:not([type]) {
 @media (max-width: 1100px) {
   .table { grid-template-columns: 220px minmax(0, 1fr); grid-template-areas: "top top" "left board" "dock dock"; }
   .side.right { display: none; }
-  .logfab { display: grid; place-items: center; position: fixed; right: 14px; bottom: calc(150px + env(safe-area-inset-bottom)); width: 44px; height: 44px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--line); font-size: 20px; z-index: 5; box-shadow: 0 4px 12px #0008; }
+  .logfab { display: grid; place-items: center; position: absolute; right: 10px; bottom: 10px; width: 42px; height: 42px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--line); font-size: 19px; z-index: 5; box-shadow: 0 4px 12px #0008; }
+  .results { right: 62px; bottom: 10px; }
 }
 @media (max-width: 760px) {
   body { font-size: 14px; }
@@ -455,7 +468,35 @@ select, input[type=text], input:not([type]) {
   .home-grid { grid-template-columns: 1fr; }
   .rules { grid-template-columns: 1fr; }
   .pickrow, .stepper { gap: 4px; }
-  .logfab { bottom: calc(200px + env(safe-area-inset-bottom)); }
+}
+
+/* Netlify previews add a badge in the bottom-right corner; keep the turn
+   buttons clear of it. The real site (GitHub Pages) has no badge. */
+.on-netlify .dock { padding-right: max(170px, env(safe-area-inset-right)); }
+@media (max-width: 760px) { .on-netlify .dock { padding-bottom: max(52px, env(safe-area-inset-bottom)); padding-right: max(14px, env(safe-area-inset-right)); } }
+
+/* Phones on their side: players left, hand and actions right, board in the middle. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .table { grid-template-columns: 170px minmax(0, 1fr) 270px; grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "top top top" "left board dock"; }
+  .topbar { padding-top: 4px; padding-bottom: 4px; }
+  .brand span { display: none; }
+  .side.right { display: none; }
+  .side.left { padding: 6px; }
+  .players { flex-direction: column; }
+  .player { min-width: 0; padding: 5px 7px; }
+  .pieces-left { display: none; }
+  .dock { flex-direction: column; align-items: stretch; justify-content: flex-start; overflow: auto; border-top: none; border-left: 1px solid #000a; gap: 8px; padding: 8px; }
+  .on-netlify .dock { padding: 8px 8px 52px; }
+  .dock-hand, .dock-actions { width: 100%; flex-direction: column; align-items: stretch; }
+  .hand { gap: 4px; }
+  .rcard { width: auto; flex: 1; height: 56px; }
+  .rlabel, .dname { display: none; }
+  .devcard { width: 48px; height: 56px; }
+  .build { flex-wrap: wrap; }
+  .buildbtn { min-width: 0; flex: 1 1 45%; padding: 5px 4px; }
+  .mainbtns { justify-content: stretch; }
+  .mainbtns .btn { flex: 1; }
+  .logfab { display: grid; }
 }
 
 @media (prefers-reduced-motion: reduce) {
