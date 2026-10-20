@@ -472,7 +472,7 @@ select, input[type=text], input:not([type]) {
 
 /* Netlify previews add a badge in the bottom-right corner; keep the turn
    buttons clear of it. The real site (GitHub Pages) has no badge. */
-.on-netlify .dock { padding-right: max(170px, env(safe-area-inset-right)); }
+.on-netlify .dock { padding-right: max(200px, env(safe-area-inset-right)); }
 @media (max-width: 760px) { .on-netlify .dock { padding-bottom: max(52px, env(safe-area-inset-bottom)); padding-right: max(14px, env(safe-area-inset-right)); } }
 
 /* Phones on their side: players left, hand and actions right, board in the middle. */
