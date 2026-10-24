@@ -46,14 +46,15 @@ service cloud.firestore {
       }
 
       // Joining: someone not yet in the room adds exactly their own uid and
-      // their seat, without touching anything else about the room.
+      // their seat, without touching anything else about the room. syncId is
+      // what the current live client bumps when someone takes over an AI seat.
       function isJoin() {
         return !(request.auth.uid in resource.data.authorizedUids)
           && request.resource.data.authorizedUids.size() == resource.data.authorizedUids.size() + 1
           && request.auth.uid in request.resource.data.authorizedUids
           && request.resource.data.status == resource.data.status
           && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['players', 'authorizedUids', 'updatedAt', 'gameState', 'stateVersion']);
+               .hasOnly(['players', 'authorizedUids', 'updatedAt', 'gameState', 'stateVersion', 'syncId']);
       }
 
       // No client-side deletes; a scheduled function clears rooms after 24 hours.
