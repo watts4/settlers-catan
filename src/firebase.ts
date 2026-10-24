@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { connectFirestoreEmulator, getFirestore } from 'firebase/firestore';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -14,6 +14,15 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const db = getFirestore(app);
+
+// Local testing only: in a dev build, ?emu=127.0.0.1:8085 points the game at a
+// Firestore emulator on this machine. Never in production, and never another
+// host, so a link can't send someone's sign-in token elsewhere.
+const emu = import.meta.env.DEV && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('emu') : null;
+if (emu && /^(127\.0\.0\.1|localhost):\d+$/.test(emu)) {
+  const [host, port] = emu.split(':');
+  connectFirestoreEmulator(db, host, Number(port));
+}
 export const auth = getAuth(app);
 
 /**

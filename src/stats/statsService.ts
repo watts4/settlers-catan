@@ -30,6 +30,8 @@ export async function recordGameAndUpdateStats(
   uid: string, displayName: string, photoURL: string | null, record: GameRecord,
 ): Promise<UserStats> {
   const stats = await getUserStats(uid) ?? createEmptyStats(uid, displayName, photoURL);
+  // A game is recorded once, even if the end screen shows twice.
+  if (stats.recentGames.some((g) => g.gameId === record.gameId)) return stats;
   stats.displayName = displayName;
   stats.photoURL = photoURL;
   stats.gamesPlayed++;
