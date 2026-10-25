@@ -404,10 +404,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     ? game.currentPlayer === multiplayerConfig.mySlot
     : isHumanTurn;
 
-  // Affordability checks (only relevant during playing phase)
-  const canBuildRoad = canAfford(currentPlayer, BUILD_COSTS.road);
-  const canBuildSettlement = canAfford(currentPlayer, BUILD_COSTS.settlement);
-  const canBuildCity = canAfford(currentPlayer, BUILD_COSTS.city);
+  // Affordability + piece-supply checks (only relevant during playing phase)
+  const canBuildRoad = canAfford(currentPlayer, BUILD_COSTS.road) && currentPlayer.pieces.roads > 0;
+  const canBuildSettlement = canAfford(currentPlayer, BUILD_COSTS.settlement) && currentPlayer.pieces.settlements > 0;
+  const canBuildCity = canAfford(currentPlayer, BUILD_COSTS.city) && currentPlayer.pieces.cities > 0;
   const canBuildDevCard = canAfford(currentPlayer, BUILD_COSTS.devCard) && game.devCardDeck.length > 0;
 
   // Robber state: human moves robber after rolling 7
@@ -1069,6 +1069,8 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
   };
 
   const handleBuildToggle = (type: 'road' | 'settlement' | 'city') => {
+    const piecesLeft = { road: currentPlayer.pieces.roads, settlement: currentPlayer.pieces.settlements, city: currentPlayer.pieces.cities }[type];
+    if (piecesLeft <= 0) { setBuildError(`No ${type} pieces left!`); return; }
     if (type === 'road' && !canBuildRoad) { setBuildError('Not enough resources! Need 1🌲 1🧱'); return; }
     if (type === 'settlement' && !canBuildSettlement) { setBuildError('Not enough resources! Need 1🌲 1🧱 1🌾 1🐑'); return; }
     if (type === 'city' && !canBuildCity) { setBuildError('Not enough resources! Need 2🌾 3⛏️'); return; }
@@ -1445,8 +1447,10 @@ function App({ multiplayerConfig, initialGameState, onLeaveGame }: AppProps) {
     });
     setDevCardPlayedThisTurn(true);
     setDevCardMode(null);
-    setRoadBuildingRoadsLeft(2);
-    setBuildingMode('road');
+    // Road Building places up to 2 roads, limited by the player's remaining road pieces
+    const freeRoads = Math.min(2, currentPlayer.pieces.roads);
+    setRoadBuildingRoadsLeft(freeRoads);
+    setBuildingMode(freeRoads > 0 ? 'road' : null);
   };
 
   const handlePickYearOfPlentyResource = (r: Resource) => {
