@@ -25,3 +25,6 @@ dist-ssr
 # Environment files
 .env
 .env.*
+
+# Netlify local build output
+.netlify
