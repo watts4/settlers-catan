@@ -129,6 +129,19 @@ export async function joinGameRoom(
 
     const data = snapshot.data() as GameRoomData;
 
+    // Already seated (e.g. opened the invite link again): hand back the same
+    // seat instead of giving this player a second one.
+    const mine = data.players.find(
+      (p) => p.isHuman && (uid ? p.uid === uid : p.sessionId === sessionId),
+    );
+    if (mine) {
+      return {
+        slot: mine.slot,
+        isHost: mine.slot === 0,
+        gameState: data.status === 'playing' ? data.gameState : undefined,
+      };
+    }
+
     // Late join: game already in progress — take over an AI slot
     if (data.status === 'playing') {
       const aiSlotEntry = data.players.find((p) => !p.isHuman);
@@ -170,10 +183,12 @@ export async function joinGameRoom(
 
     if (data.status !== 'waiting') return null;
 
-    const humanPlayers = data.players.filter((p) => p.isHuman);
-    if (humanPlayers.length >= 4) return null;
-
-    const newSlot = humanPlayers.length;
+    // Take the lowest guest seat no human holds (seat 0 is the host's).
+    // Counting humans instead would hand out a seat that's still taken once
+    // someone in a lower seat has left.
+    const humanSlots = new Set(data.players.filter((p) => p.isHuman).map((p) => p.slot));
+    const newSlot = [1, 2, 3].find((s) => !humanSlots.has(s));
+    if (newSlot === undefined) return null;
 
     const newPlayer: GameRoomPlayer = {
       slot: newSlot,
